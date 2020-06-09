@@ -10,7 +10,7 @@ version '1.0-SNAPSHOT'
 sourceCompatibility = 1.8
 
 ext {
-	javaMainClass = "com.tb24.blenderumap.Main"
+	javaMainClass = 'com.tb24.blenderumap.Main'
 }
 
 application {
@@ -20,52 +20,38 @@ application {
 jar {
 	manifest {
 		attributes(
-				"Main-Class": javaMainClass
+				'Main-Class': javaMainClass
 		)
 	}
 
 	from {
 		configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
 	} {
-		exclude "META-INF/*.SF"
-		exclude "META-INF/*.DSA"
-		exclude "META-INF/*.RSA"
+		exclude 'META-INF/*.SF'
+		exclude 'META-INF/*.DSA'
+		exclude 'META-INF/*.RSA'
 	}
-}
-
-run {
-	standardInput = System.in
-}
-
-task runWithExecJarExecutable(type: Exec) {
-	dependsOn jar
-	group = "Execution"
-	description = "Run the output executable jar with ExecTask"
-	commandLine "java", "-jar", jar.archiveFile.get()
 }
 
 repositories {
 	google()
 	mavenCentral()
-	maven {
-		url "https://dl.bintray.com/fungamesleaks/mavenRepo"
-	}
+	maven { url 'https://dl.bintray.com/fungamesleaks/mavenRepo' }
+	maven { url 'https://libraries.minecraft.net' }
 }
 
 dependencies {
-	implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
-	implementation 'me.fungames:JFortniteParse:+'
-	implementation 'com.google.code.gson:gson:2.8.5'
-	implementation 'com.squareup.retrofit2:retrofit:2.6.3'
-	implementation 'com.squareup.retrofit2:converter-gson:2.6.3'
-//	implementation 'me.fungames:JFortniteParse:3.0.2'
+	implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk8'
 	implementation 'com.google.code.gson:gson:2.8.6'
-	testImplementation group: 'junit', name: 'junit', version: '4.12'
-	implementation 'io.github.microutils:kotlin-logging:1.7.9'
+	implementation 'com.mojang:brigadier:1.0.17'
+	implementation 'me.fungames:JFortniteParse:+' // :3.0.2'
+	testImplementation 'junit:junit:4.12'
 }
+
 compileKotlin {
-	kotlinOptions.jvmTarget = "1.8"
+	kotlinOptions.jvmTarget = '1.8'
 }
+
 compileTestKotlin {
-	kotlinOptions.jvmTarget = "1.8"
+	kotlinOptions.jvmTarget = '1.8'
 }

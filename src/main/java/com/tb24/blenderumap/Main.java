@@ -2,8 +2,10 @@ package com.tb24.blenderumap;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -21,6 +23,7 @@ import java.util.UUID;
 
 import kotlin.collections.CollectionsKt;
 import kotlin.collections.MapsKt;
+import kotlin.text.StringsKt;
 import me.fungames.jfortniteparse.fileprovider.DefaultFileProvider;
 import me.fungames.jfortniteparse.ue4.FGuid;
 import me.fungames.jfortniteparse.ue4.assets.Package;
@@ -30,6 +33,7 @@ import me.fungames.jfortniteparse.ue4.assets.objects.FPackageIndex;
 import me.fungames.jfortniteparse.ue4.assets.objects.FPropertyTag;
 import me.fungames.jfortniteparse.ue4.assets.objects.FPropertyTagType;
 import me.fungames.jfortniteparse.ue4.assets.objects.FRotator;
+import me.fungames.jfortniteparse.ue4.assets.objects.FSoftObjectPath;
 import me.fungames.jfortniteparse.ue4.assets.objects.FStructFallback;
 import me.fungames.jfortniteparse.ue4.assets.objects.FVector;
 import me.fungames.jfortniteparse.ue4.assets.objects.UScriptArray;
@@ -46,11 +50,11 @@ public class Main {
 	private static Map<GameFile, Package> loaded = new HashMap<>();
 	private static Set<String> toExport = new HashSet<>();
 
-	public static void main(String[] args) throws Exception {
+	public static void main(String[] args) {
 		try {
 			DefaultFileProvider provider = new DefaultFileProvider(new File(GAME_PATH), Ue4Version.GAME_UE4_24);
 			provider.submitKey(FGuid.Companion.getMainGuid(), AES);
-			String s = "/Game/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_BoatRental.umap";
+			String s = "FortniteGame/Content/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_BoatRental.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/Buildings/1x1/Apollo_1x1_BoatHouse_b.umap";
 //			s = "FortniteGame/Content/Environments/Apollo/Sets/Rural/Materials/MI_Apollo_Rural_House.uasset";
 //			s = "FortniteGame/Content/Maps/UI/BP12/Frontend_BP12_Room_Midas_Art.umap";
@@ -64,142 +68,11 @@ public class Main {
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_FoodTruck_IceCream_a.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_Dam_PowerBox.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Environments/BuildingActors/Wood/Boardwalk/Archways/Apollo_Boardwalk_ArchwayLong.uasset";
-//			s = findBuildingActor(provider, "Apollo_Boardwalk_ArchwayLong_C");
+//			s = findBuildingActor(provider, "Apollo_Boardwalk_ArchwayLong_C").getPath();
 //			s = findBuildingActor(provider, "Prop_WildWest_SimpleChair_02_C").getPath();
-			Package pkg = provider.loadGameFile(s);
-			List<UExport> exports = pkg.getExports();
-			File file = new File(s.substring(s.lastIndexOf('/') + 1, s.lastIndexOf('.')) + ".json");
-			System.out.println("Writing to " + file.getAbsolutePath());
+			JsonArray bruh = exportAndProduceProcessed(provider, s);
 
-			try (FileWriter writer = new FileWriter(file)) {
-				JWPSerializer.GSON.toJson(exports, writer);
-			}
-
-			if (!s.endsWith(".umap")) return;
-
-			JsonArray bruh = new JsonArray();
-
-			for (UExport export : exports) {
-				String exportType = export.getExportType();
-
-				if (exportType.equals("LODActor")) {
-					continue;
-				}
-
-				FPackageIndex smc = getProp(export, "StaticMeshComponent", FPackageIndex.class);
-
-				if (smc == null) {
-					continue;
-				}
-
-				UExport refSMC = exports.get(smc.getIndex() - 1);
-				JsonArray obj = new JsonArray();
-				bruh.add(obj);
-				FGuid guid = getProp(export, "MyGuid", FGuid.class);
-				obj.add(guid != null ? guidAsString(guid) : UUID.randomUUID().toString().replace("-", ""));
-				obj.add(exportType);
-				FPackageIndex mesh = getProp(refSMC, "StaticMesh", FPackageIndex.class);
-				String meshS = null;
-				FPackageIndex meshMat = null;
-
-				if (mesh == null || mesh.getIndex() == 0) { // read the actor class to find the mesh
-					GameFile actorPath = findBuildingActor(provider, exportType);
-
-					if (actorPath != null) {
-						Package actorPkg = loadIfNot(provider, actorPath);
-
-						for (UExport actorExp : actorPkg.getExports()) {
-							if (actorExp.getExportType().endsWith("StaticMeshComponent")) {
-								mesh = getProp(actorExp, "StaticMesh", FPackageIndex.class);
-
-								if (mesh != null && mesh.getIndex() != 0) {
-									break;
-								}
-							}
-						}
-					}
-				}
-
-				if (mesh != null && mesh.getIndex() != 0) {
-					meshS = mesh.getOuterImportObject().getObjectName().getText();
-					/*String fixed = provider.fixPath(meshS);
-					fixed = fixed.substring(0, fixed.lastIndexOf('.'));
-					String finalFixed = fixed;
-					List<GameFile> matches = new ArrayList<>(MapsKt.filter(provider.getFiles(), entry -> entry.getKey().startsWith(finalFixed)).values());
-					matches.sort((o1, o2) -> o2.getPathWithoutExtension().length() - o1.getPathWithoutExtension().length());
-					if (matches.size() > 1)
-						System.err.println("More than 1 matches: " + Arrays.toString(matches.toArray()));
-					meshS = matches.get(0).getPathWithoutExtension().replace("FortniteGame/", "/Game/");*/
-
-					Package meshPkg = loadIfNot(provider, meshS = fix(exportType, meshS));
-
-					if (meshPkg != null) {
-						for (UExport meshExport : meshPkg.getExports()) {
-							if (meshExport.getExportType().equals("StaticMesh")) {
-								UScriptArray staticMaterials = getProp(meshExport, "StaticMaterials", UScriptArray.class);
-
-								if (staticMaterials != null) {
-									for (FPropertyTagType staticMaterial : staticMaterials.getContents()) {
-										if ((meshMat = getProp(((FStructFallback) staticMaterial.getTagTypeValue()).getProperties(), "MaterialInterface", FPackageIndex.class)) != null) {
-											break;
-										}
-									}
-								}
-							}
-
-							if (meshMat != null) {
-								break;
-							}
-						}
-
-						toExport.add(meshS);
-					}
-				}
-
-				FPackageIndex overrideMats = getProp(refSMC, "OverrideMaterials", FPackageIndex.class);
-				String matToUse = overrideMats != null && overrideMats.getIndex() != 0 ? overrideMats.getOuterImportObject().getObjectName().getText() : meshMat != null && meshMat.getIndex() != 0 ? meshMat.getOuterImportObject().getObjectName().getText() : null;
-//				String[] matTex = new String[4];
-
-				if (matToUse != null) {
-					/*Package matPkg = loadIfNot(provider, matToUse = fix(null, matToUse));
-					UExport matFirstExp = matPkg.getExports().get(0);
-					UScriptArray textureParameterValues = getProp(matFirstExp, "TextureParameterValues", UScriptArray.class);
-
-					for (FPropertyTagType textureParameterValue : textureParameterValues.getContents()) {
-						FStructFallback textureParameterValueS = (FStructFallback) textureParameterValue.getTagTypeValue();
-						String name = getProp(getProp(textureParameterValueS.getProperties(), "ParameterInfo", FStructFallback.class).getProperties(), "Name", FName.class).getText();
-
-						if (name != null && (name.equals("Diffuse") || name.equals("SpecularMasks") || name.equals("Normals"))) {
-							String texPath = getProp(textureParameterValueS.getProperties(), "ParameterValue", FPackageIndex.class).getOuterImportObject().getObjectName().getText();
-
-							if (name.equals("Diffuse")) {
-								matTex[0] = texPath;
-							} else if (name.equals("Normals")) {
-								matTex[1] = texPath;
-							} else if (name.equals("SpecularMasks")) {
-								matTex[2] = texPath;
-							} else if (name.equals("EmissiveTexture")) {
-								matTex[3] = texPath;
-							}
-
-							toExport.add(texPath);*/
-					toExport.add(matToUse);
-//						}
-//					}
-				}
-
-				FVector loc = getProp(refSMC, "RelativeLocation", FVector.class);
-				FRotator rot = getProp(refSMC, "RelativeRotation", FRotator.class);
-				FVector sc = getProp(refSMC, "RelativeScale3D", FVector.class);
-
-				obj.add(mesh != null ? meshS : null);
-				obj.add(matToUse);
-				obj.add(JWPSerializer.GSON.toJsonTree(new String[4]));
-				obj.add(loc != null ? vector(loc) : null);
-				obj.add(rot != null ? rotator(rot) : null);
-				obj.add(sc != null ? vector(sc) : null);
-				// TODO parent attach
-			}
+			if (bruh == null) return;
 
 			if (!toExport.isEmpty()) {
 				exportUmodel();
@@ -245,7 +118,7 @@ public class Main {
 					}
 				}
 
-			file = new File("processed.json");
+			File file = new File("processed.json");
 			System.out.println("Writing to " + file.getAbsolutePath());
 
 			try (FileWriter writer = new FileWriter(file)) {
@@ -254,6 +127,160 @@ public class Main {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+	}
+
+	@Nullable
+	private static JsonArray exportAndProduceProcessed(DefaultFileProvider provider, String s) throws IOException {
+		System.out.println();
+		System.out.println("EXPORTING " + s);
+		Package pkg = loadIfNot(provider, s);
+		List<UExport> exports = pkg.getExports();
+		File file = new File(s.substring(s.lastIndexOf('/') + 1, s.lastIndexOf('.')) + ".json");
+		System.out.println("Writing to " + file.getAbsolutePath());
+
+		try (FileWriter writer = new FileWriter(file)) {
+			JWPSerializer.GSON.toJson(exports, writer);
+		}
+
+		if (!s.endsWith(".umap")) return null;
+
+		JsonArray bruh = new JsonArray();
+
+		for (UExport export : exports) {
+			String exportType = export.getExportType();
+
+			if (exportType.equals("LODActor")) {
+				continue;
+			}
+
+			FPackageIndex smc = getProp(export, "StaticMeshComponent", FPackageIndex.class);
+
+			if (smc == null) {
+				continue;
+			}
+
+			UExport refSMC = exports.get(smc.getIndex() - 1);
+			JsonArray obj = new JsonArray();
+			bruh.add(obj);
+			FGuid guid = getProp(export, "MyGuid", FGuid.class);
+			obj.add(guid != null ? guidAsString(guid) : UUID.randomUUID().toString().replace("-", ""));
+			obj.add(exportType);
+			FPackageIndex mesh = getProp(refSMC, "StaticMesh", FPackageIndex.class);
+			String meshS = null;
+			FPackageIndex meshMat = null;
+
+			if (mesh == null || mesh.getIndex() == 0) { // read the actor class to find the mesh
+				GameFile actorPath = findBuildingActor(provider, exportType);
+
+				if (actorPath != null) {
+					Package actorPkg = loadIfNot(provider, actorPath);
+
+					for (UExport actorExp : actorPkg.getExports()) {
+						if (actorExp.getExportType().endsWith("StaticMeshComponent")) {
+							mesh = getProp(actorExp, "StaticMesh", FPackageIndex.class);
+
+							if (mesh != null && mesh.getIndex() != 0) {
+								break;
+							}
+						}
+					}
+				}
+			}
+
+			if (mesh != null && mesh.getIndex() != 0) {
+				meshS = mesh.getOuterImportObject().getObjectName().getText();
+				/*String fixed = provider.fixPath(meshS);
+				fixed = fixed.substring(0, fixed.lastIndexOf('.'));
+				String finalFixed = fixed;
+				List<GameFile> matches = new ArrayList<>(MapsKt.filter(provider.getFiles(), entry -> entry.getKey().startsWith(finalFixed)).values());
+				matches.sort((o1, o2) -> o2.getPathWithoutExtension().length() - o1.getPathWithoutExtension().length());
+				if (matches.size() > 1)
+					System.err.println("More than 1 matches: " + Arrays.toString(matches.toArray()));
+				meshS = matches.get(0).getPathWithoutExtension().replace("FortniteGame/", "/Game/");*/
+
+				Package meshPkg = loadIfNot(provider, meshS = fix(exportType, meshS));
+
+				if (meshPkg != null) {
+					for (UExport meshExport : meshPkg.getExports()) {
+						if (meshExport.getExportType().equals("StaticMesh")) {
+							UScriptArray staticMaterials = getProp(meshExport, "StaticMaterials", UScriptArray.class);
+
+							if (staticMaterials != null) {
+								for (FPropertyTagType staticMaterial : staticMaterials.getContents()) {
+									if ((meshMat = getProp(((FStructFallback) staticMaterial.getTagTypeValue()).getProperties(), "MaterialInterface", FPackageIndex.class)) != null) {
+										break;
+									}
+								}
+							}
+						}
+
+						if (meshMat != null) {
+							break;
+						}
+					}
+
+					toExport.add(meshS);
+				}
+			}
+
+			FPackageIndex overrideMats = getProp(refSMC, "OverrideMaterials", FPackageIndex.class);
+			String matToUse = overrideMats != null && overrideMats.getIndex() != 0 ? overrideMats.getOuterImportObject().getObjectName().getText() : meshMat != null && meshMat.getIndex() != 0 ? meshMat.getOuterImportObject().getObjectName().getText() : null;
+//				String[] matTex = new String[4];
+
+			if (matToUse != null) {
+				/*Package matPkg = loadIfNot(provider, matToUse = fix(null, matToUse));
+				UExport matFirstExp = matPkg.getExports().get(0);
+				UScriptArray textureParameterValues = getProp(matFirstExp, "TextureParameterValues", UScriptArray.class);
+
+				for (FPropertyTagType textureParameterValue : textureParameterValues.getContents()) {
+					FStructFallback textureParameterValueS = (FStructFallback) textureParameterValue.getTagTypeValue();
+					String name = getProp(getProp(textureParameterValueS.getProperties(), "ParameterInfo", FStructFallback.class).getProperties(), "Name", FName.class).getText();
+
+					if (name != null && (name.equals("Diffuse") || name.equals("SpecularMasks") || name.equals("Normals"))) {
+						String texPath = getProp(textureParameterValueS.getProperties(), "ParameterValue", FPackageIndex.class).getOuterImportObject().getObjectName().getText();
+
+						if (name.equals("Diffuse")) {
+							matTex[0] = texPath;
+						} else if (name.equals("Normals")) {
+							matTex[1] = texPath;
+						} else if (name.equals("SpecularMasks")) {
+							matTex[2] = texPath;
+						} else if (name.equals("EmissiveTexture")) {
+							matTex[3] = texPath;
+						}
+
+						toExport.add(texPath);*/
+				toExport.add(matToUse);
+//						}
+//					}
+			}
+
+			JsonArray additional = new JsonArray();
+			UScriptArray additionalWorlds = getProp(export, "AdditionalWorlds", UScriptArray.class);
+
+			if (additionalWorlds != null) {
+				for (FPropertyTagType additionalWorld : additionalWorlds.getContents()) {
+					FSoftObjectPath additionalWorldS = (FSoftObjectPath) additionalWorld.getTagTypeValue();
+					String text = additionalWorldS.getAssetPathName().getText();
+					JsonArray result = exportAndProduceProcessed(provider, StringsKt.substringBeforeLast(text, '.', text) + ".umap");
+					additional.add(result != null ? result : new JsonNull());
+				}
+			}
+
+			FVector loc = getProp(refSMC, "RelativeLocation", FVector.class);
+			FRotator rot = getProp(refSMC, "RelativeRotation", FRotator.class);
+			FVector sc = getProp(refSMC, "RelativeScale3D", FVector.class);
+
+			obj.add(mesh != null ? meshS : null);
+			obj.add(matToUse);
+			obj.add(JWPSerializer.GSON.toJsonTree(new String[4]));
+			obj.add(loc != null ? vector(loc) : null);
+			obj.add(rot != null ? rotator(rot) : null);
+			obj.add(sc != null ? vector(sc) : null);
+			obj.add(additional);
+		}
+
+		return bruh;
 	}
 
 	private static Package loadIfNot(DefaultFileProvider provider, String pkg) {
