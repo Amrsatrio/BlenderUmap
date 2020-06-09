@@ -48,7 +48,7 @@ public class Main {
 	public static final String GAME_PATH = "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks";
 	public static final String AES = "0x3f3717f4f206ff21bda8d3bf62b323556d1d2e7d9b0f7abd572d3cfe5b569fac";
 	private static final boolean READ_MATERIALS = false;
-	private static final boolean USE_GLTF = true;
+	private static final boolean USE_GLTF = false;
 	private static Map<GameFile, Package> loaded = new HashMap<>();
 	private static Set<String> toExport = new HashSet<>();
 
