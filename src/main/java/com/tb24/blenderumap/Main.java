@@ -1,3 +1,7 @@
+/*
+ * (C) 2020 amrsatrio. All rights reserved.
+ */
+
 package com.tb24.blenderumap;
 
 import com.google.gson.JsonArray;
@@ -40,13 +44,11 @@ import me.fungames.jfortniteparse.ue4.assets.objects.UScriptArray;
 import me.fungames.jfortniteparse.ue4.pak.GameFile;
 import me.fungames.jfortniteparse.ue4.versions.Ue4Version;
 
-/**
- * @author amrsatrio
- */
 public class Main {
 	public static final String GAME_PATH = "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks";
 	public static final String AES = "0x3f3717f4f206ff21bda8d3bf62b323556d1d2e7d9b0f7abd572d3cfe5b569fac";
 	private static final boolean READ_MATERIALS = false;
+	private static final boolean USE_GLTF = true;
 	private static Map<GameFile, Package> loaded = new HashMap<>();
 	private static Set<String> toExport = new HashSet<>();
 
@@ -342,6 +344,11 @@ public class Main {
 			parts.add("-game=ue4.24");
 			parts.add("-aes=" + AES);
 			h(parts, "-out=\"" + new File("").getAbsolutePath() + '\"');
+
+			if (USE_GLTF) {
+				parts.add("-gltf");
+			}
+
 			boolean bFirst = true;
 
 			for (String export : chunk) {

@@ -1,8 +1,14 @@
+"""
+(C) 2020 amrsatrio. All rights reserved.
+"""
+
 # Change the value to the run folder of the Java program. I'm leaving mine here.
 data_dir = "C:\\Users\\satri\\Documents\\AppProjects\\BlenderUmap\\run\\"
 
 # Wondering what makes stuff so long? Or if something weren't right? Flip this to True.
 verbose = True
+
+use_gltf = False
 
 # ---------- END INPUTS, DO NOT MODIFY ANYTHING BELOW UNLESS YOU NEED TO ----------
 import bpy
@@ -20,9 +26,9 @@ def import_umap(comps, attach_parent=None):
 		mesh = comp[2]
 		mat = comp[3]
 		textures = comp[4]
-		comp_location = comp[5] if comp[5] is not None else [0, 0, 0]
-		comp_rotation = comp[6] if comp[6] is not None else [0, 0, 0]
-		comp_scale = comp[7] if comp[7] is not None else [1, 1, 1]
+		comp_location = comp[5] or [0, 0, 0]
+		comp_rotation = comp[6] or [0, 0, 0]
+		comp_scale = comp[7] or [1, 1, 1]
 		child_comps = comp[8]
 
 		if mesh is None:
@@ -31,12 +37,19 @@ def import_umap(comps, attach_parent=None):
 		else:
 			if mesh.startswith("/"):
 				mesh = mesh[1:]
-			if (os.path.exists(os.path.join(data_dir, mesh + ".psk"))):
-				mesh += ".psk"
-			elif (os.path.exists(os.path.join(data_dir, mesh + ".pskx"))):
-				mesh += ".pskx"
 
-			if bpy.ops.import_scene.psk(bReorientBones=True, directory=data_dir, files=[{"name": mesh}]) == {"FINISHED"}:
+			if use_gltf:
+				if (os.path.exists(os.path.join(data_dir, mesh + ".gltf"))):
+					mesh += ".gltf"
+				mesh_import_result = bpy.ops.import_scene.gltf(filepath=os.path.join(data_dir, mesh))
+			else:
+				if (os.path.exists(os.path.join(data_dir, mesh + ".psk"))):
+					mesh += ".psk"
+				elif (os.path.exists(os.path.join(data_dir, mesh + ".pskx"))):
+					mesh += ".pskx"
+				mesh_import_result = bpy.ops.import_scene.psk(bReorientBones=True, directory=data_dir, files=[{"name": mesh}])
+
+			if mesh_import_result == {"FINISHED"}:
 				if verbose: print("Mesh imported")
 				bpy.ops.object.shade_smooth()
 			else:
@@ -57,10 +70,13 @@ def import_umap(comps, attach_parent=None):
 		created.location = (comp_location[0],
 							comp_location[1] * -1,
 							comp_location[2])
-		created.rotation_euler = (comp_rotation[2] * (pi / 180),
-								  comp_rotation[0] * -1 * (pi / 180),
-								  comp_rotation[1] * -1 * (pi / 180))
-		created.scale = comp_scale
+		created.rotation_mode = "XYZ"
+		created.rotation_euler = (radians(comp_rotation[2] + (90 if use_gltf else 0)),
+								  radians(comp_rotation[0] * -1),
+								  radians(comp_rotation[1] * -1))
+		created.scale = [comp_scale[0] * 100,
+						 comp_scale[1] * 100,
+						 comp_scale[2] * 100] if use_gltf else comp_scale
 
 		if attach_parent is not None:
 			if verbose: print("Attaching to parent", attach_parent.name)
