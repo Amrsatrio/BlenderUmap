@@ -2,7 +2,6 @@ package com.tb24.blenderumap;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonNull;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -43,6 +42,7 @@ import me.fungames.jfortniteparse.ue4.versions.Ue4Version;
 public class Main {
 	public static final String GAME_PATH = "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks";
 	public static final String AES = "0x3f3717f4f206ff21bda8d3bf62b323556d1d2e7d9b0f7abd572d3cfe5b569fac";
+	private static final boolean READ_MATERIALS = false;
 	private static Map<GameFile, Package> loaded = new HashMap<>();
 	private static Set<String> toExport = new HashSet<>();
 
@@ -192,7 +192,7 @@ public class Main {
 
 				obj.add(mesh != null ? meshS : null);
 				obj.add(matToUse);
-				obj.add(new JsonNull());
+				obj.add(JWPSerializer.GSON.toJsonTree(new String[4]));
 				obj.add(loc != null ? vector(loc) : null);
 				obj.add(rot != null ? rotator(rot) : null);
 				obj.add(sc != null ? vector(sc) : null);
@@ -203,7 +203,7 @@ public class Main {
 				exportUmodel();
 			}
 
-			if (false) // THESE MATERIALS SHIT TAKES FOREVER
+			if (READ_MATERIALS) // THESE MATERIALS SHIT TAKES FOREVER HELP ME FIX THX
 				for (JsonElement entry : bruh) {
 					JsonArray entry1 = (JsonArray) entry;
 					JsonElement mat = entry1.get(3);
