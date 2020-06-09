@@ -14,13 +14,14 @@ use_gltf = False
 import bpy
 import json
 import os
+import time
 from math import *
 from mathutils import Vector
 
 
 def import_umap(comps, attach_parent=None):
 	for comp_i, comp in enumerate(comps):
-		print("Importing actor " + str(comp_i) + " of " + str(len(comps)))
+		print("Importing actor " + str(comp_i + 1) + " of " + str(len(comps)))
 		guid = comp[0]
 		export_type = comp[1]
 		mesh = comp[2]
@@ -41,13 +42,25 @@ def import_umap(comps, attach_parent=None):
 			if use_gltf:
 				if (os.path.exists(os.path.join(data_dir, mesh + ".gltf"))):
 					mesh += ".gltf"
-				mesh_import_result = bpy.ops.import_scene.gltf(filepath=os.path.join(data_dir, mesh))
+				final_dir = os.path.join(data_dir, mesh)
+				if verbose: print("Mesh:", final_dir)
+				if os.path.exists(final_dir):
+					mesh_import_result = bpy.ops.import_scene.gltf(filepath=final_dir)
+				else:
+					print("WARNING: Mesh not found, defaulting to cube")
+					bpy.ops.mesh.primitive_cube_add(size=10)
 			else:
 				if (os.path.exists(os.path.join(data_dir, mesh + ".psk"))):
 					mesh += ".psk"
 				elif (os.path.exists(os.path.join(data_dir, mesh + ".pskx"))):
 					mesh += ".pskx"
-				mesh_import_result = bpy.ops.import_scene.psk(bReorientBones=True, directory=data_dir, files=[{"name": mesh}])
+				final_dir = os.path.join(data_dir, mesh)
+				if verbose: print("Mesh:", final_dir)
+				if os.path.exists(final_dir):
+					mesh_import_result = bpy.ops.import_scene.psk(bReorientBones=True, directory=data_dir, files=[{"name": mesh}])
+				else:
+					print("WARNING: Mesh not found, defaulting to cube")
+					bpy.ops.mesh.primitive_cube_add(size=10)
 
 			if mesh_import_result == {"FINISHED"}:
 				if verbose: print("Mesh imported")
@@ -83,8 +96,11 @@ def import_umap(comps, attach_parent=None):
 			created.parent = attach_parent
 
 		if child_comps is not None:
-			for child_comp in child_comps:
-				import_umap(child_comp, created)
+			if use_gltf:
+				print("Nested worlds aren't supported with GLTF")
+			else:
+				for child_comp in child_comps:
+					import_umap(child_comp, created)
 
 		print("")
 
@@ -191,6 +207,7 @@ def import_and_apply_material(dot_mat_path, textures, apply_to_selected):
 	print("Material imported")
 
 
+start = int(time.time() * 1000.0)
 bpy.context.scene.unit_settings.scale_length = 0.01
 # bpy.context.space_data.clip_end = 100000
 
@@ -214,3 +231,5 @@ for block in [block for block in bpy.data.materials if block.users == 0]:
 
 with open(os.path.join(data_dir, "processed.json")) as file:
 	import_umap(json.loads(file.read()))
+
+print("All done in " + int((time.time() * 1000.0) - start) + "ms")
