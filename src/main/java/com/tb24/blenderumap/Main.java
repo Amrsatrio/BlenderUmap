@@ -56,6 +56,7 @@ public class Main {
 //			s = "FortniteGame/Content/Maps/UI/BP12/Frontend_BP12_Room_Midas_Art.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Agency.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Agency_FT_b.umap";
+//			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_FrenzyFarm.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_PleasantPark_001.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_RiskyReels_001.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Yacht_001.umap";
@@ -256,7 +257,14 @@ public class Main {
 	}
 
 	private static Package loadIfNot(DefaultFileProvider provider, String pkg) {
-		return loadIfNot(provider, provider.findGameFile(pkg));
+		GameFile gameFile = provider.findGameFile(pkg);
+
+		if (gameFile != null) {
+			return loadIfNot(provider, gameFile);
+		} else {
+			System.out.println("WARNING: Requested package " + pkg + " was not found");
+			return null;
+		}
 	}
 
 	private static Package loadIfNot(DefaultFileProvider provider, GameFile pkg) {
@@ -287,6 +295,8 @@ public class Main {
 			fixS += "_256";
 		} else if ("Apollo_Fac_Pipe_S_512_C".equals(exportType)) {
 			fixS += "_512";
+		} else if ("CornField_Rectangle_C".equals(exportType)) {
+			fixS += "_2";
 		}
 
 		return fixS;
@@ -347,7 +357,7 @@ public class Main {
 			GameFile out = filtered.values().iterator().next();
 
 			if (filtered.size() > 1) {
-				System.err.println("WANING: We've got 2 actors. We picked the first one: " + out);
+				System.out.println("WARNING: We've got 2 actors. We picked the first one: " + out);
 			}
 
 			return out;
