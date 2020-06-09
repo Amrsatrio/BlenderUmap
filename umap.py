@@ -190,9 +190,8 @@ for comp in comps:
 	created.location = (comp_location[0] * global_scale,
 						comp_location[1] * global_scale * -1,
 						comp_location[2] * global_scale)
-	# TODO rotations are wrong
-	created.rotation_euler = (comp_rotation[0] * (pi / 180),
-							  comp_rotation[2] * (pi / 180) * -1,
+	created.rotation_euler = (comp_rotation[2] * (pi / 180),
+							  comp_rotation[0] * (pi / 180) * -1,
 							  comp_rotation[1] * (pi / 180) * -1)
 	created.scale = comp_scale
 	bpy.ops.object.shade_smooth()
