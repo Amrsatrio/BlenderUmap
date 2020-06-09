@@ -53,15 +53,16 @@ public class Main {
 			String s = "/Game/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_BoatRental.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/Buildings/1x1/Apollo_1x1_BoatHouse_b.umap";
 //			s = "FortniteGame/Content/Environments/Apollo/Sets/Rural/Materials/MI_Apollo_Rural_House.uasset";
-//			s = "/Game/Maps/UI/BP12/Frontend_BP12_Room_Midas_Art.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Yacht_001.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_FoodTruck_IceCream_a.umap";
+//			s = "FortniteGame/Content/Maps/UI/BP12/Frontend_BP12_Room_Midas_Art.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Agency.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_Dam_PowerBox.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Agency_FT_b.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_RiskyReels_001.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Environments/BuildingActors/Wood/Boardwalk/Archways/Apollo_Boardwalk_ArchwayLong.uasset";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_PleasantPark_001.umap";
+//			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_RiskyReels_001.umap";
+//			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Yacht_001.umap";
+//			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Yacht_002.umap";
+//			s = "FortniteGame/Content/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_FoodTruck_IceCream_a.umap";
+//			s = "FortniteGame/Content/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_Dam_PowerBox.umap";
+//			s = "FortniteGame/Content/Athena/Apollo/Environments/BuildingActors/Wood/Boardwalk/Archways/Apollo_Boardwalk_ArchwayLong.uasset";
 //			s = findBuildingActor(provider, "Apollo_Boardwalk_ArchwayLong_C");
 //			s = findBuildingActor(provider, "Prop_WildWest_SimpleChair_02_C").getPath();
 			Package pkg = provider.loadGameFile(s);
@@ -270,6 +271,8 @@ public class Main {
 			fixS += "_2";
 		} else if (fixS.endsWith("Treasure_Chest")) {
 			fixS += "_2";
+		} else if (fixS.endsWith("M_Rural_Garage")) {
+			fixS += "_1";
 		} else if ("Prop_WildWest_SimpleChair_01_C".equals(exportType)) {
 			fixS += "_1";
 		} else if ("Prop_WildWest_SimpleChair_02_C".equals(exportType)) {
@@ -278,8 +281,12 @@ public class Main {
 			fixS += "_3";
 		} else if ("Garage_Door_01_C".equals(exportType)) {
 			fixS += "_1";
-		} else if (fixS.endsWith("M_Rural_Garage")) {
-			fixS += "_1";
+		} else if ("Apollo_Fac_Pipe_S_128_C".equals(exportType)) {
+			fixS += "_128";
+		} else if ("Apollo_Fac_Pipe_S_256_C".equals(exportType)) {
+			fixS += "_256";
+		} else if ("Apollo_Fac_Pipe_S_512_C".equals(exportType)) {
+			fixS += "_512";
 		}
 
 		return fixS;
@@ -291,29 +298,31 @@ public class Main {
 	}*/
 
 	private static void exportUmodel() throws InterruptedException, IOException {
-		List<String> parts = new ArrayList<>();
-		parts.add("umodel");
-		h(parts, "-path=\"" + GAME_PATH + '\"');
-		parts.add("-game=ue4.24");
-		parts.add("-aes=" + AES);
-		h(parts, "-out=\"" + new File("").getAbsolutePath() + '\"');
-		boolean bFirst = true;
+		for (List<String> chunk : CollectionsKt.chunked(toExport, 250)) {
+			List<String> parts = new ArrayList<>();
+			parts.add("umodel");
+			h(parts, "-path=\"" + GAME_PATH + '\"');
+			parts.add("-game=ue4.24");
+			parts.add("-aes=" + AES);
+			h(parts, "-out=\"" + new File("").getAbsolutePath() + '\"');
+			boolean bFirst = true;
 
-		for (String export : toExport) {
-			if (bFirst) {
-				bFirst = false;
-				parts.add("-export");
-				parts.add(export);
-			} else {
-				parts.add("-pkg=" + export);
+			for (String export : chunk) {
+				if (bFirst) {
+					bFirst = false;
+					parts.add("-export");
+					parts.add(export);
+				} else {
+					parts.add("-pkg=" + export);
+				}
 			}
-		}
 
-		System.out.println("Invoking UModel: " + CollectionsKt.joinToString(parts, " ", "", "", -1, "...", null));
-		ProcessBuilder pb = new ProcessBuilder(parts);
-		pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-		pb.redirectError(ProcessBuilder.Redirect.INHERIT);
-		pb.start().waitFor();
+			System.out.println("Invoking UModel: " + CollectionsKt.joinToString(parts, " ", "", "", -1, "...", null));
+			ProcessBuilder pb = new ProcessBuilder(parts);
+			pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+			pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+			pb.start().waitFor();
+		}
 	}
 
 	private static void h(List<String> command, String s) {
@@ -338,13 +347,13 @@ public class Main {
 			GameFile out = filtered.values().iterator().next();
 
 			if (filtered.size() > 1) {
-				System.err.println("We've got 2 actors. We picked the first one: " + out);
+				System.err.println("WANING: We've got 2 actors. We picked the first one: " + out);
 			}
 
 			return out;
 		}
 
-		System.err.println("Actor not found: " + actorName);
+		System.err.println("WARNING: Actor not found: " + actorName);
 		return null;
 	}
 
