@@ -64,7 +64,7 @@ public class Main {
 //			s = "FortniteGame/Content/Environments/Apollo/Sets/Rural/Materials/MI_Apollo_Rural_House.uasset";
 //			s = "FortniteGame/Content/Maps/UI/BP12/Frontend_BP12_Room_Midas_Art.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Agency.umap";
-			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Agency_FT_b.umap";
+//			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Agency_FT_b.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_FrenzyFarm.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_PleasantPark_001.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_RiskyReels_001.umap";
@@ -75,6 +75,9 @@ public class Main {
 //			s = "FortniteGame/Content/Athena/Apollo/Environments/BuildingActors/Wood/Boardwalk/Archways/Apollo_Boardwalk_ArchwayLong.uasset";
 //			s = findBuildingActor(provider, "Apollo_Boardwalk_ArchwayLong_C").getPath();
 //			s = findBuildingActor(provider, "Prop_WildWest_SimpleChair_02_C").getPath();
+//			s = "/Game/Athena/Apollo/Maps/Apollo_Terrain.umap";
+//			s = "/Game/Athena/Apollo/Maps/Landscape/Apollo_Terrain_LS_A1.umap";
+//			s = "/Game/Athena/Maps/Athena_Faceoff.umap";
 			JsonArray bruh = exportAndProduceProcessed(provider, s);
 
 			if (bruh == null) return;
@@ -440,7 +443,12 @@ public class Main {
 	}
 
 	private static <T> T getProp(UExport export, String name, Class<T> clazz) {
-		return getProp(((UObject) export).getProperties(), name, clazz);
+		if (export instanceof UObject) {
+			return getProp(((UObject) export).getProperties(), name, clazz);
+		} else {
+			System.out.println("Skipping " + export.getExportType());
+			return null;
+		}
 	}
 
 	private static String guidAsString(FGuid guid) {
