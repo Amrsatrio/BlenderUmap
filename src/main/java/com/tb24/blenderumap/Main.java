@@ -48,9 +48,12 @@ public class Main {
 	public static final String GAME_PATH = "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks";
 	public static final String AES = "0x3f3717f4f206ff21bda8d3bf62b323556d1d2e7d9b0f7abd572d3cfe5b569fac";
 	private static final boolean READ_MATERIALS = false;
+	private static final boolean RUN_UMODEL = true;
+	private static final boolean SHOW_UMODEL_OUTPUT = true;
 	private static final boolean USE_GLTF = false;
 	private static Map<GameFile, Package> loaded = new HashMap<>();
 	private static Set<String> toExport = new HashSet<>();
+	private static Map<String, String[]> parsedMaterials = new HashMap<>();
 
 	public static void main(String[] args) {
 		try {
@@ -61,7 +64,7 @@ public class Main {
 //			s = "FortniteGame/Content/Environments/Apollo/Sets/Rural/Materials/MI_Apollo_Rural_House.uasset";
 //			s = "FortniteGame/Content/Maps/UI/BP12/Frontend_BP12_Room_Midas_Art.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Agency.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Agency_FT_b.umap";
+			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Agency_FT_b.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_FrenzyFarm.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_PleasantPark_001.umap";
 //			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_RiskyReels_001.umap";
@@ -76,49 +79,13 @@ public class Main {
 
 			if (bruh == null) return;
 
-			if (!toExport.isEmpty()) {
+			if (RUN_UMODEL && !toExport.isEmpty()) {
 				exportUmodel();
 			}
 
-			if (READ_MATERIALS) // THESE MATERIALS SHIT TAKES FOREVER HELP ME FIX THX
-				for (JsonElement entry : bruh) {
-					JsonArray entry1 = (JsonArray) entry;
-					JsonElement mat = entry1.get(3);
-
-					if (mat.isJsonPrimitive()) {
-						String[] matTex = new String[4];
-
-						for (String s1 : Files.readAllLines(new File(fix(null, mat.getAsString().substring(1)) + ".mat").toPath())) {
-							String[] split = s1.split("=");
-
-							if (split.length > 1) {
-								String assign = split[1].toLowerCase() + ".ubulk";
-								Collection<GameFile> filtered = MapsKt.filter(provider.getFiles(), entry2 -> entry2.getKey().contains(assign)).values();
-
-								if (!filtered.isEmpty()) {
-									String full = '/' + filtered.iterator().next().getPathWithoutExtension().replace("FortniteGame/Content", "Game");
-
-									switch (split[0]) {
-										case "Diffuse":
-											matTex[0] = full;
-											break;
-										case "Normal":
-											matTex[1] = full;
-											break;
-										case "Specular":
-											matTex[2] = full;
-											break;
-										case "Emissive":
-											matTex[3] = full;
-											break;
-									}
-								}
-							}
-						}
-
-						entry1.set(4, JWPSerializer.GSON.toJsonTree(matTex));
-					}
-				}
+			if (READ_MATERIALS) {
+				resolveMaterials(provider, bruh);
+			}
 
 			File file = new File("processed.json");
 			System.out.println("Writing to " + file.getAbsolutePath());
@@ -285,6 +252,62 @@ public class Main {
 		return bruh;
 	}
 
+	private static void resolveMaterials(DefaultFileProvider provider, JsonArray array) {
+		for (JsonElement entry : array) {
+			JsonArray entry1 = entry.getAsJsonArray();
+			JsonElement mat = entry1.get(3);
+			JsonElement children = entry1.get(8);
+
+			if (mat.isJsonPrimitive()) {
+				entry1.set(4, JWPSerializer.GSON.toJsonTree(MapsKt.getOrPut(parsedMaterials, mat.getAsString(), () -> {
+					File matFile = new File(fix(null, mat.getAsString().substring(1)) + ".mat");
+					String[] matTex = new String[4];
+
+					try {
+						for (String s1 : Files.readAllLines(matFile.toPath())) {
+							String[] split = s1.split("=");
+
+							if (split.length > 1) {
+								String assign = split[1].toLowerCase() + ".ubulk";
+								Collection<GameFile> filtered = MapsKt.filter(provider.getFiles(), entry2 -> entry2.getKey().contains(assign)).values();
+
+								if (!filtered.isEmpty()) {
+									String full = '/' + filtered.iterator().next().getPathWithoutExtension().replace("FortniteGame/Content", "Game");
+
+									switch (split[0]) {
+										case "Diffuse":
+											matTex[0] = full;
+											break;
+										case "Normal":
+											matTex[1] = full;
+											break;
+										case "Specular":
+											matTex[2] = full;
+											break;
+										case "Emissive": // emissive broke
+											// matTex[3] = full;
+											break;
+									}
+								}
+							}
+						}
+					} catch (IOException e) {
+						// throw new RuntimeException("Failed when reading material", e);
+						System.out.println("WARNING: Material failed to load: " + matFile);
+					}
+
+					return matTex;
+				})));
+			}
+
+			if (children.isJsonArray()) {
+				for (JsonElement childEntry : children.getAsJsonArray()) {
+					resolveMaterials(provider, childEntry.getAsJsonArray());
+				}
+			}
+		}
+	}
+
 	private static Package loadIfNot(DefaultFileProvider provider, String pkg) {
 		GameFile gameFile = provider.findGameFile(pkg);
 
@@ -363,8 +386,12 @@ public class Main {
 
 			System.out.println("Invoking UModel: " + CollectionsKt.joinToString(parts, " ", "", "", -1, "...", null));
 			ProcessBuilder pb = new ProcessBuilder(parts);
-			pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-			pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+
+			if (SHOW_UMODEL_OUTPUT) {
+				pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+				pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+			}
+
 			pb.start().waitFor();
 		}
 	}

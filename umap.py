@@ -21,7 +21,6 @@ from mathutils import Vector
 
 def import_umap(comps, attach_parent=None):
 	for comp_i, comp in enumerate(comps):
-		print("Importing actor " + str(comp_i + 1) + " of " + str(len(comps)))
 		guid = comp[0]
 		export_type = comp[1]
 		mesh = comp[2]
@@ -32,10 +31,19 @@ def import_umap(comps, attach_parent=None):
 		comp_scale = comp[7] or [1, 1, 1]
 		child_comps = comp[8]
 
+		if guid is not None:
+			name = export_type + "_" + guid[:4]
+		else:
+			name = export_type
+
+		print("Actor " + str(comp_i + 1) + " of " + str(len(comps)) + ": " + name)
+
 		if mesh is None:
 			print("WARNING: No mesh, defaulting to cube")
 			bpy.ops.mesh.primitive_cube_add(size=10)
 		else:
+			mesh_import_result = None
+
 			if mesh.startswith("/"):
 				mesh = mesh[1:]
 
@@ -73,20 +81,16 @@ def import_umap(comps, attach_parent=None):
 				import_and_apply_material(os.path.join(data_dir, mat[1:] + ".mat"), textures, True)
 
 		created = bpy.context.selected_objects[0]
-
-		if guid is not None:
-			created.name = export_type + "_" + guid[:4]
-		else:
-			created.name = export_type
+		created.name = name
 
 		if verbose: print("Applying transformation properties")
-		created.location = (comp_location[0],
+		created.location = [comp_location[0],
 							comp_location[1] * -1,
-							comp_location[2])
+							comp_location[2]]
 		created.rotation_mode = "XYZ"
-		created.rotation_euler = (radians(comp_rotation[2] + (90 if use_gltf else 0)),
+		created.rotation_euler = [radians(comp_rotation[2] + (90 if use_gltf else 0)),
 								  radians(comp_rotation[0] * -1),
-								  radians(comp_rotation[1] * -1))
+								  radians(comp_rotation[1] * -1)]
 		created.scale = [comp_scale[0] * 100,
 						 comp_scale[1] * 100,
 						 comp_scale[2] * 100] if use_gltf else comp_scale
@@ -130,76 +134,92 @@ def import_and_apply_material(dot_mat_path, textures, apply_to_selected):
 	if textures[0] is not None:  # diffuse
 		diffuseImgPath = os.path.join(data_dir, textures[0][1:] + ".tga")
 		if verbose: print(diffuseImgPath)
-		diffuseTex = mat.node_tree.nodes.new("ShaderNodeTexImage")
-		diffuseImg = bpy.data.images.load(filepath=diffuseImgPath)
-		diffuseTex.image = diffuseImg
-		diffuseTex.location = Vector((-400, 450))
-		# diffuseTex.hide = True
-		# connect diffuseTexture to principle
-		mat.node_tree.links.new(diffuseTex.outputs[0], principleBSDF.inputs[0])
+
+		if os.path.exists(diffuseImgPath):
+			diffuseTex = mat.node_tree.nodes.new("ShaderNodeTexImage")
+			diffuseImg = bpy.data.images.load(filepath=diffuseImgPath)
+			diffuseTex.image = diffuseImg
+			diffuseTex.location = Vector((-400, 450))
+			# diffuseTex.hide = True
+			# connect diffuseTexture to principle
+			mat.node_tree.links.new(diffuseTex.outputs[0], principleBSDF.inputs[0])
+		else:
+			print("WARNING: " + diffuseImgPath + " not found")
 
 	if textures[1] is not None:  # normal
 		normalImgPath = os.path.join(data_dir, textures[1][1:] + ".tga")
 		if verbose: print(normalImgPath)
-		normY = -125
 
-		normTex = mat.node_tree.nodes.new("ShaderNodeTexImage")
-		normCurve = mat.node_tree.nodes.new("ShaderNodeRGBCurve")
-		normMap = mat.node_tree.nodes.new("ShaderNodeNormalMap")
-		normImage = bpy.data.images.load(filepath=normalImgPath)
-		# location crap
-		normTex.location = Vector((-800, normY))
-		normCurve.location = Vector((-500, normY))
-		normMap.location = Vector((-200, normY))
+		if os.path.exists(normalImgPath):
+			normY = -125
 
-		normImage.colorspace_settings.name = 'Non-Color'
-		normTex.image = normImage
-		# normTex.hide = True
-		# setup rgb curve
-		normCurve.mapping.curves[1].points[0].location = (0, 1)
-		normCurve.mapping.curves[1].points[1].location = (1, 0)
-		# connect everything
-		mat.node_tree.links.new(normTex.outputs[0], normCurve.inputs[1])
-		mat.node_tree.links.new(normCurve.outputs[0], normMap.inputs[1])
-		mat.node_tree.links.new(normMap.outputs[0], principleBSDF.inputs['Normal'])
+			normTex = mat.node_tree.nodes.new("ShaderNodeTexImage")
+			normCurve = mat.node_tree.nodes.new("ShaderNodeRGBCurve")
+			normMap = mat.node_tree.nodes.new("ShaderNodeNormalMap")
+			normImage = bpy.data.images.load(filepath=normalImgPath)
+			# location crap
+			normTex.location = Vector((-800, normY))
+			normCurve.location = Vector((-500, normY))
+			normMap.location = Vector((-200, normY))
+
+			normImage.colorspace_settings.name = 'Non-Color'
+			normTex.image = normImage
+			# normTex.hide = True
+			# setup rgb curve
+			normCurve.mapping.curves[1].points[0].location = (0, 1)
+			normCurve.mapping.curves[1].points[1].location = (1, 0)
+			# connect everything
+			mat.node_tree.links.new(normTex.outputs[0], normCurve.inputs[1])
+			mat.node_tree.links.new(normCurve.outputs[0], normMap.inputs[1])
+			mat.node_tree.links.new(normMap.outputs[0], principleBSDF.inputs['Normal'])
+		else:
+			print("WARNING: " + normalImgPath + " not found")
 
 	if textures[2] is not None:  # specular
 		specularImgPath = os.path.join(data_dir, textures[2][1:] + ".tga")
 		if verbose: print(specularImgPath)
-		specY = 140
 
-		specTex = mat.node_tree.nodes.new("ShaderNodeTexImage")
+		if os.path.exists(specularImgPath):
+			specY = 140
 
-		specSeperateRGB = mat.node_tree.nodes.new("ShaderNodeSeparateRGB")
-		specSeperateRGB.location = Vector((-250, specY))
-		# specSeperateRGB.hide = True
+			specTex = mat.node_tree.nodes.new("ShaderNodeTexImage")
 
-		specImage = bpy.data.images.load(filepath=specularImgPath)
-		specImage.colorspace_settings.name = 'Non-Color'
+			specSeperateRGB = mat.node_tree.nodes.new("ShaderNodeSeparateRGB")
+			specSeperateRGB.location = Vector((-250, specY))
+			# specSeperateRGB.hide = True
 
-		specTex.image = specImage
-		specTex.location = Vector((-600, specY))
-		# specTex.hide = True
-		# connect spec texture to rgb split
-		mat.node_tree.links.new(specTex.outputs[0], specSeperateRGB.inputs[0])
-		# connect rgb splits to principle
-		mat.node_tree.links.new(specSeperateRGB.outputs[0], principleBSDF.inputs['Specular'])
-		mat.node_tree.links.new(specSeperateRGB.outputs[1], principleBSDF.inputs['Metallic'])
-		mat.node_tree.links.new(specSeperateRGB.outputs[2], principleBSDF.inputs['Roughness'])
+			specImage = bpy.data.images.load(filepath=specularImgPath)
+			specImage.colorspace_settings.name = 'Non-Color'
+
+			specTex.image = specImage
+			specTex.location = Vector((-600, specY))
+			# specTex.hide = True
+			# connect spec texture to rgb split
+			mat.node_tree.links.new(specTex.outputs[0], specSeperateRGB.inputs[0])
+			# connect rgb splits to principle
+			mat.node_tree.links.new(specSeperateRGB.outputs[0], principleBSDF.inputs['Specular'])
+			mat.node_tree.links.new(specSeperateRGB.outputs[1], principleBSDF.inputs['Metallic'])
+			mat.node_tree.links.new(specSeperateRGB.outputs[2], principleBSDF.inputs['Roughness'])
+		else:
+			print("WARNING: " + specularImgPath + " not found")
 
 	if textures[3] is not None:  # emission
 		emissiveImgPath = os.path.join(data_dir, textures[3][1:] + ".tga")
 		if verbose: print(emissiveImgPath)
-		emiTex = mat.node_tree.nodes.new("ShaderNodeTexImage")
-		emiShader = mat.node_tree.nodes.new("ShaderNodeEmission")
-		emiImage = bpy.data.images.load(filepath=emissiveImgPath)
-		emiTex.image = emiImage
-		# emission - location
-		emiTex.location = Vector((-200, -425))
-		emiShader.location = Vector((100, -425))
-		# connecting
-		mat.node_tree.links.new(emiTex.outputs[0], emiShader.inputs[0])
-		mat.node_tree.links.new(emiShader.outputs[0], addShader.inputs[1])
+
+		if os.path.exists(emissiveImgPath):
+			emiTex = mat.node_tree.nodes.new("ShaderNodeTexImage")
+			emiShader = mat.node_tree.nodes.new("ShaderNodeEmission")
+			emiImage = bpy.data.images.load(filepath=emissiveImgPath)
+			emiTex.image = emiImage
+			# emission - location
+			emiTex.location = Vector((-200, -425))
+			emiShader.location = Vector((100, -425))
+			# connecting
+			mat.node_tree.links.new(emiTex.outputs[0], emiShader.inputs[0])
+			mat.node_tree.links.new(emiShader.outputs[0], addShader.inputs[1])
+		else:
+			print("WARNING: " + emissiveImgPath + " not found")
 
 	if apply_to_selected:
 		bpy.context.active_object.data.materials[0] = mat
@@ -232,4 +252,4 @@ for block in [block for block in bpy.data.materials if block.users == 0]:
 with open(os.path.join(data_dir, "processed.json")) as file:
 	import_umap(json.loads(file.read()))
 
-print("All done in " + int((time.time() * 1000.0) - start) + "ms")
+print("All done in " + str(int((time.time() * 1000.0) - start)) + "ms")
