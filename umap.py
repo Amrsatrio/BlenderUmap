@@ -2,7 +2,7 @@
 (C) 2020 amrsatrio. All rights reserved.
 """
 
-# Change the value to the working directory Java program with the bat. I'm leaving mine here.
+# Change the value to the working directory of the Java program with the bat. I'm leaving mine here.
 # Must end with the path separator (\\ on Windows, / on *nix) or it will fail.
 data_dir = "C:\\Users\\satri\\Documents\\AppProjects\\BlenderUmap\\run\\"
 
@@ -246,16 +246,7 @@ start = int(time.time() * 1000.0)
 # clear all objects except camera
 for obj in bpy.context.scene.objects:
 	if obj.type == "CAMERA": continue
-
 	obj.select_set(True)
-	mats = obj.data.materials
-
-	for mat in mats:
-		mat.user_clear()
-
-	matLength = len(mats)
-	for i in range(matLength):
-		obj.data.materials.pop(index=0)
 
 bpy.ops.object.delete()
 
