@@ -290,6 +290,7 @@ with open(os.path.join(data_dir, "processed.json")) as file:
 	import_umap(json.loads(file.read()))
 
 # delete helper objects
+bpy.ops.object.select_all(action="DESELECT")
 fallback_cube.select_set(True)
 empty_mesh.select_set(True)
 bpy.ops.object.delete()
