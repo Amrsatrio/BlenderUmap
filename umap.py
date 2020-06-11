@@ -18,6 +18,8 @@ import time
 from math import *
 from mathutils import Vector
 
+all_meshes = {}
+
 
 def import_umap(comps, attach_parent=None):
 	for comp_i, comp in enumerate(comps):
@@ -31,54 +33,62 @@ def import_umap(comps, attach_parent=None):
 		comp_scale = comp[7] or [1, 1, 1]
 		child_comps = comp[8]
 
-		if guid is not None:
-			name = export_type + "_" + guid[:4]
-		else:
-			name = export_type
-
+		name = export_type + ("" if guid is None else ("_" + guid[:4]))
 		print("Actor " + str(comp_i + 1) + " of " + str(len(comps)) + ": " + name)
 
-		if mesh is None:
+		if child_comps is not None and len(child_comps) > 0:
+			bpy.ops.mesh.primitive_plane_add(size=100)
+			bpy.context.selected_objects[0].data = bpy.data.meshes["__empty"]
+		elif mesh is None:
 			print("WARNING: No mesh, defaulting to cube")
-			bpy.ops.mesh.primitive_cube_add(size=10)
+			cube()
 		else:
-			mesh_import_result = None
+			if mesh.startswith("/"): mesh = mesh[1:]
 
-			if mesh.startswith("/"):
-				mesh = mesh[1:]
+			key = mesh + ":" + str(mat)
+			existing_mesh = all_meshes.get(key)
 
-			if use_gltf:
-				if (os.path.exists(os.path.join(data_dir, mesh + ".gltf"))):
-					mesh += ".gltf"
-				final_dir = os.path.join(data_dir, mesh)
-				if verbose: print("Mesh:", final_dir)
-				if os.path.exists(final_dir):
-					mesh_import_result = bpy.ops.import_scene.gltf(filepath=final_dir)
-				else:
-					print("WARNING: Mesh not found, defaulting to cube")
-					bpy.ops.mesh.primitive_cube_add(size=10)
+			if existing_mesh is not None:
+				if verbose: print("Using existing mesh")
+				bpy.ops.mesh.primitive_plane_add(size=100)
+				bpy.context.selected_objects[0].data = bpy.data.meshes[existing_mesh]
 			else:
-				if (os.path.exists(os.path.join(data_dir, mesh + ".psk"))):
-					mesh += ".psk"
-				elif (os.path.exists(os.path.join(data_dir, mesh + ".pskx"))):
-					mesh += ".pskx"
-				final_dir = os.path.join(data_dir, mesh)
-				if verbose: print("Mesh:", final_dir)
-				if os.path.exists(final_dir):
-					mesh_import_result = bpy.ops.import_scene.psk(bReorientBones=True, directory=data_dir, files=[{"name": mesh}])
+				mesh_import_result = None
+
+				if use_gltf:
+					if os.path.exists(os.path.join(data_dir, mesh + ".gltf")):
+						mesh += ".gltf"
+					final_dir = os.path.join(data_dir, mesh)
+					if verbose: print("Mesh:", final_dir)
+					if os.path.exists(final_dir):
+						mesh_import_result = bpy.ops.import_scene.gltf(filepath=final_dir)
+					else:
+						print("WARNING: Mesh not found, defaulting to cube")
+						cube()
 				else:
-					print("WARNING: Mesh not found, defaulting to cube")
-					bpy.ops.mesh.primitive_cube_add(size=10)
+					if os.path.exists(os.path.join(data_dir, mesh + ".psk")):
+						mesh += ".psk"
+					elif os.path.exists(os.path.join(data_dir, mesh + ".pskx")):
+						mesh += ".pskx"
+					final_dir = os.path.join(data_dir, mesh)
+					if verbose: print("Mesh:", final_dir)
+					if os.path.exists(final_dir):
+						mesh_import_result = bpy.ops.import_scene.psk(bReorientBones=True, directory=data_dir, files=[{"name": mesh}])
+					else:
+						print("WARNING: Mesh not found, defaulting to cube")
+						cube()
 
-			if mesh_import_result == {"FINISHED"}:
-				if verbose: print("Mesh imported")
-				bpy.ops.object.shade_smooth()
-			else:
-				print("WARNING: Failure importing mesh, defaulting to cube")
-				bpy.ops.mesh.primitive_cube_add(size=10)
+				if mesh_import_result == {"FINISHED"}:
+					if verbose: print("Mesh imported")
+					bpy.ops.object.shade_smooth()
+				else:
+					print("WARNING: Failure importing mesh, defaulting to cube")
+					cube()
 
-			if mat is not None:
-				import_and_apply_material(os.path.join(data_dir, mat[1:] + ".mat"), textures, True)
+				if mat is not None:
+					import_and_apply_material(os.path.join(data_dir, mat[1:] + ".mat"), textures, True)
+
+				all_meshes[key] = bpy.context.selected_objects[0].data.name
 
 		created = bpy.context.selected_objects[0]
 		created.name = name
@@ -101,7 +111,7 @@ def import_umap(comps, attach_parent=None):
 
 		if child_comps is not None:
 			if use_gltf:
-				print("Nested worlds aren't supported with GLTF")
+				print("Nested worlds aren't supported yet with GLTF")
 			else:
 				for child_comp in child_comps:
 					import_umap(child_comp, created)
@@ -227,10 +237,18 @@ def import_and_apply_material(dot_mat_path, textures, apply_to_selected):
 	print("Material imported")
 
 
+def cube():
+	bpy.ops.mesh.primitive_cube_add(size=100)
+	bpy.context.selected_objects[0].data = bpy.data.meshes["__fallback"]
+
+
 start = int(time.time() * 1000.0)
+
+# initialize scene properties
 bpy.context.scene.unit_settings.scale_length = 0.01
 # bpy.context.space_data.clip_end = 100000
 
+# clear all objects except camera
 for obj in bpy.context.scene.objects:
 	if obj.type == "CAMERA": continue
 
@@ -246,10 +264,34 @@ for obj in bpy.context.scene.objects:
 
 bpy.ops.object.delete()
 
+# clear materials
 for block in [block for block in bpy.data.materials if block.users == 0]:
 	bpy.data.materials.remove(block)
 
+# clear meshes
+for block in [block for block in bpy.data.meshes if block.users == 0]:
+	bpy.data.meshes.remove(block)
+
+# setup helper objects
+# 1. fallback cube
+bpy.ops.mesh.primitive_cube_add(size=100)
+fallback_cube = bpy.context.selected_objects[0]
+fallback_cube.name = "__fallback"
+fallback_cube.data.name = "__fallback"
+
+# 2. empty mesh
+bpy.ops.mesh.primitive_cube_add(size=1)
+empty_mesh = bpy.context.selected_objects[0]
+empty_mesh.name = "__empty"
+empty_mesh.data.name = "__empty"
+
+# do it!
 with open(os.path.join(data_dir, "processed.json")) as file:
 	import_umap(json.loads(file.read()))
+
+# delete helper objects
+fallback_cube.select_set(True)
+empty_mesh.select_set(True)
+bpy.ops.object.delete()
 
 print("All done in " + str(int((time.time() * 1000.0) - start)) + "ms")

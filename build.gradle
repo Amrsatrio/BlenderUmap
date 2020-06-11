@@ -5,7 +5,7 @@ plugins {
 }
 
 group 'com.tb24'
-version '1.0-SNAPSHOT'
+version '0.1.0'
 
 sourceCompatibility = 1.8
 
@@ -37,13 +37,13 @@ repositories {
 	google()
 	mavenCentral()
 	maven { url 'https://dl.bintray.com/fungamesleaks/mavenRepo' }
-	maven { url 'https://libraries.minecraft.net' }
+//	maven { url 'https://libraries.minecraft.net' }
 }
 
 dependencies {
 	implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk8'
 	implementation 'com.google.code.gson:gson:2.8.6'
-	implementation 'com.mojang:brigadier:1.0.17'
+//	implementation 'com.mojang:brigadier:1.0.17'
 	implementation 'me.fungames:JFortniteParse:+' // :3.0.2'
 	testImplementation 'junit:junit:4.12'
 }

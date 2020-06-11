@@ -11,19 +11,23 @@ import com.google.gson.JsonNull;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.awt.Desktop;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import kotlin.collections.CollectionsKt;
 import kotlin.collections.MapsKt;
@@ -45,48 +49,73 @@ import me.fungames.jfortniteparse.ue4.pak.GameFile;
 import me.fungames.jfortniteparse.ue4.versions.Ue4Version;
 
 public class Main {
-	public static final String GAME_PATH = "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks";
-	public static final String AES = "0x3f3717f4f206ff21bda8d3bf62b323556d1d2e7d9b0f7abd572d3cfe5b569fac";
-	private static final boolean READ_MATERIALS = false;
-	private static final boolean RUN_UMODEL = true;
-	private static final boolean SHOW_UMODEL_OUTPUT = true;
-	private static final boolean USE_GLTF = false;
+	private static File gamePath;
+	private static Ue4Version gameVersion;
+	private static String aes;
+	private static boolean readMaterials;
+	private static boolean runUmodel;
+	private static boolean useGltf;
+	private static Properties properties;
+	private static File jsonsFolder = new File("jsons");
 	private static Map<GameFile, Package> loaded = new HashMap<>();
 	private static Set<String> toExport = new HashSet<>();
 	private static Map<String, String[]> parsedMaterials = new HashMap<>();
+	private static List<String> warnings = new ArrayList<>();
+	private static long start = System.currentTimeMillis();
 
 	public static void main(String[] args) {
 		try {
-			DefaultFileProvider provider = new DefaultFileProvider(new File(GAME_PATH), Ue4Version.GAME_UE4_24);
-			provider.submitKey(FGuid.Companion.getMainGuid(), AES);
-			String s = "FortniteGame/Content/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_BoatRental.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Maps/Buildings/1x1/Apollo_1x1_BoatHouse_b.umap";
-//			s = "FortniteGame/Content/Environments/Apollo/Sets/Rural/Materials/MI_Apollo_Rural_House.uasset";
-//			s = "FortniteGame/Content/Maps/UI/BP12/Frontend_BP12_Room_Midas_Art.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Agency.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Agency_FT_b.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_FrenzyFarm.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_PleasantPark_001.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_RiskyReels_001.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Yacht_001.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Maps/POI/Apollo_POI_Yacht_002.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_FoodTruck_IceCream_a.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_Dam_PowerBox.umap";
-//			s = "FortniteGame/Content/Athena/Apollo/Environments/BuildingActors/Wood/Boardwalk/Archways/Apollo_Boardwalk_ArchwayLong.uasset";
-//			s = findBuildingActor(provider, "Apollo_Boardwalk_ArchwayLong_C").getPath();
-//			s = findBuildingActor(provider, "Prop_WildWest_SimpleChair_02_C").getPath();
-//			s = "/Game/Athena/Apollo/Maps/Apollo_Terrain.umap";
-//			s = "/Game/Athena/Apollo/Maps/Landscape/Apollo_Terrain_LS_A1.umap";
-//			s = "/Game/Athena/Maps/Athena_Faceoff.umap";
-			JsonArray bruh = exportAndProduceProcessed(provider, s);
+			File configFile = new File("config.properties");
+
+			if (!configFile.exists()) {
+				System.err.println("config.properties not found");
+				return;
+			}
+
+			properties = new Properties();
+			properties.load(new FileInputStream(configFile));
+			gamePath = new File(properties.getProperty("gamePath", "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks"));
+			gameVersion = Ue4Version.values()[Integer.parseInt(properties.getProperty("gameVersion", "2"))];
+			aes = properties.getProperty("aes");
+			readMaterials = Boolean.parseBoolean(properties.getProperty("readMaterials", "false"));
+			runUmodel = Boolean.parseBoolean(properties.getProperty("runUmodel", "true"));
+			useGltf = Boolean.parseBoolean(properties.getProperty("useGltf", "false"));
+			String exportPackage = properties.getProperty("package");
+
+			if (exportPackage == null || exportPackage.isEmpty()) {
+				System.err.println("Please specify a package.");
+				return;
+			}
+
+			if (aes == null || aes.isEmpty()) {
+				System.out.println("No AES key provided. Please modify config.properties to include the AES key using \"aes=<hex>\".");
+				System.out.println("Opening https://fnbot.shop/api/aes");
+				Desktop.getDesktop().browse(new URI("https://fnbot.shop/api/aes"));
+				return;
+				// the solution below returns 403 for some reason
+				/*System.out.println("AES is not defined, getting one from fnbot.shop...");
+
+				try (Scanner scanner = new Scanner(new URL("https://fnbot.shop/api/aes").openStream(), "UTF-8").useDelimiter("\\A")) {
+					if (scanner.hasNext()) {
+						aes = scanner.next();
+						System.out.println(aes);
+					}
+				}*/
+			}
+
+			jsonsFolder.mkdir();
+
+			DefaultFileProvider provider = new DefaultFileProvider(gamePath, gameVersion);
+			provider.submitKey(FGuid.Companion.getMainGuid(), aes);
+			JsonArray bruh = exportAndProduceProcessed(provider, exportPackage);
 
 			if (bruh == null) return;
 
-			if (RUN_UMODEL && !toExport.isEmpty()) {
+			if (runUmodel && !toExport.isEmpty()) {
 				exportUmodel();
 			}
 
-			if (READ_MATERIALS) {
+			if (readMaterials) {
 				resolveMaterials(provider, bruh);
 			}
 
@@ -96,6 +125,13 @@ public class Main {
 			try (FileWriter writer = new FileWriter(file)) {
 				JWPSerializer.GSON.toJson(bruh, writer);
 			}
+
+			try (FileWriter writer = new FileWriter(new File("summary.json"))) {
+				JWPSerializer.GSON.toJson(warnings, writer);
+			}
+
+			System.out.println(String.format("All done in %,.1fs. In the Python script, replace the line with data_dir with this line below:\n", (System.currentTimeMillis() - start) / 1000.0F));
+			System.out.println("data_dir = \"" + new File("").getAbsolutePath().replace("\\", "\\\\") + "\"");
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -103,11 +139,10 @@ public class Main {
 
 	@Nullable
 	private static JsonArray exportAndProduceProcessed(DefaultFileProvider provider, String s) throws IOException {
-		System.out.println();
-		System.out.println("EXPORTING " + s);
+		System.out.println("\nExporting " + s);
 		Package pkg = loadIfNot(provider, s);
 		List<UExport> exports = pkg.getExports();
-		File file = new File(s.substring(s.lastIndexOf('/') + 1, s.lastIndexOf('.')) + ".json");
+		File file = new File(jsonsFolder, s.substring(s.lastIndexOf('/') + 1, s.lastIndexOf('.')) + ".json");
 		System.out.println("Writing to " + file.getAbsolutePath());
 
 		try (FileWriter writer = new FileWriter(file)) {
@@ -272,10 +307,10 @@ public class Main {
 
 							if (split.length > 1) {
 								String assign = split[1].toLowerCase() + ".ubulk";
-								Collection<GameFile> filtered = MapsKt.filter(provider.getFiles(), entry2 -> entry2.getKey().contains(assign)).values();
+								List<Map.Entry<String, GameFile>> filtered = provider.getFiles().entrySet().stream().filter(entry2 -> entry2.getKey().contains(assign)).collect(Collectors.toList());
 
 								if (!filtered.isEmpty()) {
-									String full = '/' + filtered.iterator().next().getPathWithoutExtension().replace("FortniteGame/Content", "Game");
+									String full = '/' + filtered.get(0).getValue().getPathWithoutExtension().replace("FortniteGame/Content", "Game");
 
 									switch (split[0]) {
 										case "Diffuse":
@@ -296,7 +331,7 @@ public class Main {
 						}
 					} catch (IOException e) {
 						// throw new RuntimeException("Failed when reading material", e);
-						System.out.println("WARNING: Material failed to load: " + matFile);
+						warn("Material failed to load: " + matFile);
 					}
 
 					return matTex;
@@ -317,7 +352,7 @@ public class Main {
 		if (gameFile != null) {
 			return loadIfNot(provider, gameFile);
 		} else {
-			System.out.println("WARNING: Requested package " + pkg + " was not found");
+			warn("Requested package " + pkg + " was not found");
 			return null;
 		}
 	}
@@ -366,12 +401,12 @@ public class Main {
 		for (List<String> chunk : CollectionsKt.chunked(toExport, 250)) {
 			List<String> parts = new ArrayList<>();
 			parts.add("umodel");
-			h(parts, "-path=\"" + GAME_PATH + '\"');
-			parts.add("-game=ue4.24");
-			parts.add("-aes=" + AES);
+			h(parts, "-path=\"" + gamePath + '\"');
+			parts.add("-game=ue" + (gameVersion == Ue4Version.GAME_UE4_22 ? "4.22" : gameVersion == Ue4Version.GAME_UE4_23 ? "4.23" : gameVersion == Ue4Version.GAME_UE4_24 ? "4.24" : gameVersion == Ue4Version.GAME_UE4_25 ? "4.25" : /* Fortnite 12.61 */ "4.24"));
+			parts.add("-aes=" + (aes.startsWith("0x") ? aes : "0x" + aes));
 			h(parts, "-out=\"" + new File("").getAbsolutePath() + '\"');
 
-			if (USE_GLTF) {
+			if (useGltf) {
 				parts.add("-gltf");
 			}
 
@@ -389,12 +424,8 @@ public class Main {
 
 			System.out.println("Invoking UModel: " + CollectionsKt.joinToString(parts, " ", "", "", -1, "...", null));
 			ProcessBuilder pb = new ProcessBuilder(parts);
-
-			if (SHOW_UMODEL_OUTPUT) {
-				pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-				pb.redirectError(ProcessBuilder.Redirect.INHERIT);
-			}
-
+			pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+			pb.redirectError(ProcessBuilder.Redirect.INHERIT);
 			pb.start().waitFor();
 		}
 	}
@@ -409,25 +440,25 @@ public class Main {
 		}
 
 		String check = '/' + actorName.toLowerCase() + ".uasset";
-		Map<String, GameFile> filtered = MapsKt.filter(provider.getFiles(), entry -> entry.getKey().endsWith(check));
+		List<Map.Entry<String, GameFile>> filtered = provider.getFiles().entrySet().stream().filter(entry -> entry.getKey().endsWith(check)).collect(Collectors.toList());
 
 		if (filtered.size() == 1) {
-			return filtered.values().iterator().next();
+			return filtered.get(0).getValue();
 		}
 
-		filtered = MapsKt.filter(filtered, entry -> entry.getKey().contains("Actor".toLowerCase())); // keys are lower cased
+		filtered = filtered.stream().filter(entry -> entry.getKey().contains("Actor".toLowerCase())).collect(Collectors.toList()); // keys are lower cased
 
 		if (!filtered.isEmpty()) {
-			GameFile out = filtered.values().iterator().next();
+			GameFile out = filtered.get(0).getValue();
 
 			if (filtered.size() > 1) {
-				System.out.println("WARNING: We've got 2 actors. We picked the first one: " + out);
+				warn(actorName + ": Found " + filtered.size() + " actors. Picked the first one: " + out);
 			}
 
 			return out;
 		}
 
-		System.err.println("WARNING: Actor not found: " + actorName);
+		warn("Actor not found: " + actorName);
 		return null;
 	}
 
@@ -469,5 +500,10 @@ public class Main {
 		array.add(rotator.getYaw());
 		array.add(rotator.getRoll());
 		return array;
+	}
+
+	public static void warn(String message) {
+		System.out.println("WARNING: " + message);
+		warnings.add(message);
 	}
 }
