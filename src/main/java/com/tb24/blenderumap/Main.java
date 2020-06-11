@@ -131,7 +131,7 @@ public class Main {
 			}
 
 			System.out.println(String.format("All done in %,.1fs. In the Python script, replace the line with data_dir with this line below:\n", (System.currentTimeMillis() - start) / 1000.0F));
-			System.out.println("data_dir = \"" + new File("").getAbsolutePath().replace("\\", "\\\\") + "\"");
+			System.out.println("data_dir = \"" + (new File("").getAbsolutePath() + File.separatorChar).replace("\\", "\\\\") + "\"");
 		} catch (Exception e) {
 			e.printStackTrace();
 		}

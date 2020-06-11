@@ -2,7 +2,8 @@
 (C) 2020 amrsatrio. All rights reserved.
 """
 
-# Change the value to the run folder of the Java program. I'm leaving mine here.
+# Change the value to the working directory Java program with the bat. I'm leaving mine here.
+# Must end with the path separator (\\ on Windows, / on *nix) or it will fail.
 data_dir = "C:\\Users\\satri\\Documents\\AppProjects\\BlenderUmap\\run\\"
 
 # Wondering what makes stuff so long? Or if something weren't right? Flip this to True.
@@ -94,16 +95,14 @@ def import_umap(comps, attach_parent=None):
 		created.name = name
 
 		if verbose: print("Applying transformation properties")
-		created.location = [comp_location[0],
-							comp_location[1] * -1,
-							comp_location[2]]
+		created.location = [comp_location[0] * 0.01,
+							comp_location[1] * 0.01 * -1,
+							comp_location[2] * 0.01]
 		created.rotation_mode = "XYZ"
 		created.rotation_euler = [radians(comp_rotation[2] + (90 if use_gltf else 0)),
 								  radians(comp_rotation[0] * -1),
 								  radians(comp_rotation[1] * -1)]
-		created.scale = [comp_scale[0] * 100,
-						 comp_scale[1] * 100,
-						 comp_scale[2] * 100] if use_gltf else comp_scale
+		created.scale = comp_scale
 
 		if attach_parent is not None:
 			if verbose: print("Attaching to parent", attach_parent.name)
@@ -243,10 +242,6 @@ def cube():
 
 
 start = int(time.time() * 1000.0)
-
-# initialize scene properties
-bpy.context.scene.unit_settings.scale_length = 0.01
-# bpy.context.space_data.clip_end = 100000
 
 # clear all objects except camera
 for obj in bpy.context.scene.objects:
