@@ -1,0 +1,20 @@
+{
+  "_Documentation": "https://github.com/Amrsatrio/BlenderUmap/blob/master/README.md",
+  "PaksDirectory": "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks",
+  "UEVersion": "GAME_UE4_25",
+  "EncryptionKeys": [
+	{
+	  "Guid": "00000000000000000000000000000000",
+	  "Key": "0x2ba4708c17abf803ab821c0c89fa1cf3dfe7aa91d526d2e11526bc1ac4e34d13"
+	},
+	{
+	  "FileName": "pakchunk1006-WindowsClient.pak",
+	  "Key": "0x7dec1e6b26ce85b7680555f97064ceaa5c788dfdc674f98a6a711f726dedb943"
+	}
+  ],
+  "bReadMaterials": true,
+  "bRunUModel": true,
+  "UModelAdditionalArgs": "",
+  "bDumpAssets": false,
+  "ExportPackage": "/Game/Content/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_BoatRental.umap"
+}

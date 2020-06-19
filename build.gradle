@@ -5,7 +5,7 @@ plugins {
 }
 
 group 'com.tb24'
-version '0.1.1'
+version '0.2.0'
 
 sourceCompatibility = 1.8
 
@@ -38,6 +38,7 @@ repositories {
 	mavenCentral()
 	maven { url 'https://dl.bintray.com/fungamesleaks/mavenRepo' }
 //	maven { url 'https://libraries.minecraft.net' }
+	maven { url 'https://jitpack.io' }
 }
 
 dependencies {
@@ -45,6 +46,7 @@ dependencies {
 	implementation 'com.google.code.gson:gson:2.8.6'
 //	implementation 'com.mojang:brigadier:1.0.17'
 	implementation 'me.fungames:JFortniteParse:+' // :3.0.2'
+	implementation 'org.slf4j:slf4j-api:1.7.30'
 	testImplementation 'junit:junit:4.12'
 }
 

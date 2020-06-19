@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="INFO">
+	<Appenders>
+		<Console name="console" target="SYSTEM_OUT">
+			<PatternLayout pattern="%c: %p: %m%n" />
+		</Console>
+		<File name="file" fileName="BlenderUmap.log" immediateFlush="true" append="false">
+			<PatternLayout pattern="[%d{yyyy.MM.dd-HH.mm.ss:SSS}{GMT}]%c: %p: %m%n" />
+		</File>
+	</Appenders>
+	<Loggers>
+		<Root level="info">
+			<AppenderRef ref="console" />
+			<AppenderRef ref="file" />
+		</Root>
+	</Loggers>
+</Configuration>

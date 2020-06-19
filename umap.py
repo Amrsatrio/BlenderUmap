@@ -1,284 +1,428 @@
 """
+BlenderUmap v0.2.0
 (C) 2020 amrsatrio. All rights reserved.
 """
-
-# Change the value to the working directory of the Java program with the bat. I'm leaving mine here.
-# Must end with the path separator (\\ on Windows, / on *nix) or it will fail.
-data_dir = "C:\\Users\\satri\\Documents\\AppProjects\\BlenderUmap\\run\\"
-
-# Wondering what makes stuff so long? Or if something weren't right? Flip this to True.
-verbose = True
-
-use_gltf = False
-
-# ---------- END INPUTS, DO NOT MODIFY ANYTHING BELOW UNLESS YOU NEED TO ----------
 import bpy
 import json
 import os
 import time
 from math import *
-from mathutils import Vector
 
-all_meshes = {}
+# Change the value to the working directory of the Java program with the bat. I'm leaving mine here.
+data_dir = r"C:\Users\satri\Documents\AppProjects\BlenderUmap\run"
 
-
-def import_umap(comps, attach_parent=None):
-	for comp_i, comp in enumerate(comps):
-		guid = comp[0]
-		export_type = comp[1]
-		mesh = comp[2]
-		mat = comp[3]
-		textures = comp[4]
-		comp_location = comp[5] or [0, 0, 0]
-		comp_rotation = comp[6] or [0, 0, 0]
-		comp_scale = comp[7] or [1, 1, 1]
-		child_comps = comp[8]
-
-		name = export_type + ("" if guid is None else ("_" + guid[:4]))
-		print("Actor " + str(comp_i + 1) + " of " + str(len(comps)) + ": " + name)
-
-		if child_comps is not None and len(child_comps) > 0:
-			bpy.ops.mesh.primitive_plane_add(size=100)
-			bpy.context.selected_objects[0].data = bpy.data.meshes["__empty"]
-		elif mesh is None:
-			print("WARNING: No mesh, defaulting to cube")
-			cube()
-		else:
-			if mesh.startswith("/"): mesh = mesh[1:]
-
-			key = mesh + ":" + str(mat)
-			existing_mesh = all_meshes.get(key)
-
-			if existing_mesh is not None:
-				if verbose: print("Using existing mesh")
-				bpy.ops.mesh.primitive_plane_add(size=100)
-				bpy.context.selected_objects[0].data = bpy.data.meshes[existing_mesh]
-			else:
-				mesh_import_result = None
-
-				if use_gltf:
-					if os.path.exists(os.path.join(data_dir, mesh + ".gltf")):
-						mesh += ".gltf"
-					final_dir = os.path.join(data_dir, mesh)
-					if verbose: print("Mesh:", final_dir)
-					if os.path.exists(final_dir):
-						mesh_import_result = bpy.ops.import_scene.gltf(filepath=final_dir)
-					else:
-						print("WARNING: Mesh not found, defaulting to cube")
-						cube()
-				else:
-					if os.path.exists(os.path.join(data_dir, mesh + ".psk")):
-						mesh += ".psk"
-					elif os.path.exists(os.path.join(data_dir, mesh + ".pskx")):
-						mesh += ".pskx"
-					final_dir = os.path.join(data_dir, mesh)
-					if verbose: print("Mesh:", final_dir)
-					if os.path.exists(final_dir):
-						mesh_import_result = bpy.ops.import_scene.psk(bReorientBones=True, directory=data_dir, files=[{"name": mesh}])
-					else:
-						print("WARNING: Mesh not found, defaulting to cube")
-						cube()
-
-				if mesh_import_result == {"FINISHED"}:
-					if verbose: print("Mesh imported")
-					bpy.ops.object.shade_smooth()
-				else:
-					print("WARNING: Failure importing mesh, defaulting to cube")
-					cube()
-
-				if mat is not None:
-					import_and_apply_material(os.path.join(data_dir, mat[1:] + ".mat"), textures, True)
-
-				all_meshes[key] = bpy.context.selected_objects[0].data.name
-
-		created = bpy.context.selected_objects[0]
-		created.name = name
-
-		if verbose: print("Applying transformation properties")
-		created.location = [comp_location[0] * 0.01,
-							comp_location[1] * 0.01 * -1,
-							comp_location[2] * 0.01]
-		created.rotation_mode = "XYZ"
-		created.rotation_euler = [radians(comp_rotation[2] + (90 if use_gltf else 0)),
-								  radians(comp_rotation[0] * -1),
-								  radians(comp_rotation[1] * -1)]
-		created.scale = comp_scale
-
-		if attach_parent is not None:
-			if verbose: print("Attaching to parent", attach_parent.name)
-			created.parent = attach_parent
-
-		if child_comps is not None:
-			if use_gltf:
-				print("Nested worlds aren't supported yet with GLTF")
-			else:
-				for child_comp in child_comps:
-					import_umap(child_comp, created)
-
-		print("")
+reuse_meshes = True
+use_cube_as_fallback = True
+use_gltf = False
+verbose = True
 
 
-# credit Lucas7yoshi
-def import_and_apply_material(dot_mat_path, textures, apply_to_selected):
-	# make the material
-	outputMaterialName = os.path.basename(dot_mat_path)
+# ---------- END INPUTS, DO NOT MODIFY ANYTHING BELOW UNLESS YOU NEED TO ----------
+def import_umap(comps: list, attach_parent: bpy.types.Object = None) -> None:
+    for comp_i, comp in enumerate(comps):
+        guid = comp[0]
+        export_type = comp[1]
+        mesh_path = comp[2]
+        mats = comp[3]
+        texture_data = comp[4]
+        location = comp[5] or [0, 0, 0]
+        rotation = comp[6] or [0, 0, 0]
+        scale = comp[7] or [1, 1, 1]
+        child_comps = comp[8]
 
-	if outputMaterialName in bpy.data.materials:
-		if apply_to_selected:
-			bpy.context.active_object.data.materials[0] = bpy.data.materials[outputMaterialName]
-		return
+        name = export_type + (("_" + guid[:8]) if guid else "")
+        print("\nActor %d of %d: %s" % (comp_i + 1, len(comps), name))
 
-	mat = bpy.data.materials.new(name=outputMaterialName)
-	mat.use_nodes = True
-	materialOutput = mat.node_tree.nodes.get('Material Output')
-	principleBSDF = mat.node_tree.nodes.get('Principled BSDF')
-	mat.node_tree.links.remove(principleBSDF.outputs[0].links[0])  # remove inital link
+        if child_comps and len(child_comps) > 0:
+            bpy.ops.mesh.primitive_plane_add(size=1)
+            bpy.context.active_object.data = bpy.data.meshes["__empty"]
+        elif not mesh_path:
+            print("WARNING: No mesh, defaulting to fallback mesh")
+            fallback()
+        else:
+            if mesh_path.startswith("/"):
+                mesh_path = mesh_path[1:]
 
-	addShader = mat.node_tree.nodes.new("ShaderNodeAddShader")
-	mat.node_tree.links.new(principleBSDF.outputs[0], addShader.inputs[0])
-	mat.node_tree.links.new(addShader.outputs[0], materialOutput.inputs[0])
-	addShader.location = Vector((400, -250))
-	materialOutput.location = Vector((650, -250))
+            key = os.path.basename(mesh_path)
+            td_suffix = ""
 
-	if textures[0] is not None:  # diffuse
-		diffuseImgPath = os.path.join(data_dir, textures[0][1:] + ".tga")
-		if verbose: print(diffuseImgPath)
+            if mats and len(mats) > 0:
+                key += "_{:08x}".format(abs(string_hash_code(";".join(mats.keys()))))
+            if texture_data and len(texture_data) > 0:
+                td_suffix = "_{:08x}".format(abs(string_hash_code(";".join([it[0] if it else "" for it in texture_data]))))
+                key += td_suffix
 
-		if os.path.exists(diffuseImgPath):
-			diffuseTex = mat.node_tree.nodes.new("ShaderNodeTexImage")
-			diffuseImg = bpy.data.images.load(filepath=diffuseImgPath)
-			diffuseTex.image = diffuseImg
-			diffuseTex.location = Vector((-400, 450))
-			# diffuseTex.hide = True
-			# connect diffuseTexture to principle
-			mat.node_tree.links.new(diffuseTex.outputs[0], principleBSDF.inputs[0])
-		else:
-			print("WARNING: " + diffuseImgPath + " not found")
+            existing_mesh = bpy.data.meshes.get(key) if reuse_meshes else None
 
-	if textures[1] is not None:  # normal
-		normalImgPath = os.path.join(data_dir, textures[1][1:] + ".tga")
-		if verbose: print(normalImgPath)
+            if existing_mesh:
+                if verbose:
+                    print("Using existing mesh")
+                bpy.ops.mesh.primitive_plane_add(size=1)
+                bpy.context.active_object.data = existing_mesh
+            else:
+                mesh_import_result = None
 
-		if os.path.exists(normalImgPath):
-			normY = -125
+                if use_gltf:
+                    final_dir = os.path.join(data_dir, mesh_path + ".gltf")
+                    if verbose:
+                        print("Mesh:", final_dir)
+                    if os.path.exists(final_dir):
+                        mesh_import_result = bpy.ops.import_scene.gltf(filepath=final_dir)
+                    else:
+                        print("WARNING: Mesh not found, defaulting to fallback mesh")
+                        fallback()
+                else:
+                    final_dir = os.path.join(data_dir, mesh_path)
+                    mesh_path_ = mesh_path
+                    if os.path.exists(final_dir + ".psk"):
+                        final_dir += ".psk"
+                        mesh_path_ += ".psk"
+                    elif os.path.exists(final_dir + ".pskx"):
+                        final_dir += ".pskx"
+                        mesh_path_ += ".pskx"
+                    if verbose:
+                        print("Mesh:", final_dir)
+                    if os.path.exists(final_dir):
+                        mesh_import_result = bpy.ops.import_scene.psk(bReorientBones=True, directory=data_dir, files=[{"name": mesh_path_}])
+                    else:
+                        print("WARNING: Mesh not found, defaulting to fallback mesh")
+                        fallback()
 
-			normTex = mat.node_tree.nodes.new("ShaderNodeTexImage")
-			normCurve = mat.node_tree.nodes.new("ShaderNodeRGBCurve")
-			normMap = mat.node_tree.nodes.new("ShaderNodeNormalMap")
-			normImage = bpy.data.images.load(filepath=normalImgPath)
-			# location crap
-			normTex.location = Vector((-800, normY))
-			normCurve.location = Vector((-500, normY))
-			normMap.location = Vector((-200, normY))
+                if mesh_import_result == {"FINISHED"}:
+                    if verbose:
+                        print("Mesh imported")
+                    bpy.context.active_object.data.name = key
+                    bpy.ops.object.shade_smooth()
 
-			normImage.colorspace_settings.name = 'Non-Color'
-			normTex.image = normImage
-			# normTex.hide = True
-			# setup rgb curve
-			normCurve.mapping.curves[1].points[0].location = (0, 1)
-			normCurve.mapping.curves[1].points[1].location = (1, 0)
-			# connect everything
-			mat.node_tree.links.new(normTex.outputs[0], normCurve.inputs[1])
-			mat.node_tree.links.new(normCurve.outputs[0], normMap.inputs[1])
-			mat.node_tree.links.new(normMap.outputs[0], principleBSDF.inputs['Normal'])
-		else:
-			print("WARNING: " + normalImgPath + " not found")
+                    for m_idx, (m_path, m_textures) in enumerate(mats.items()):
+                        import_material(m_idx, m_path, td_suffix, m_textures, texture_data)
+                else:
+                    print("WARNING: Failure importing mesh, defaulting to fallback mesh")
+                    fallback()
 
-	if textures[2] is not None:  # specular
-		specularImgPath = os.path.join(data_dir, textures[2][1:] + ".tga")
-		if verbose: print(specularImgPath)
+        created = bpy.context.active_object
+        created.name = name
+        created.location = [location[0] * 0.01, location[1] * 0.01 * -1, location[2] * 0.01]
+        created.rotation_mode = "XYZ"
+        created.rotation_euler = [radians(rotation[2] + (90 if use_gltf else 0)), radians(rotation[0] * -1), radians(rotation[1] * -1)]
+        created.scale = scale
 
-		if os.path.exists(specularImgPath):
-			specY = 140
+        if attach_parent:
+            print("Attaching to parent", attach_parent.name)
+            created.parent = attach_parent
 
-			specTex = mat.node_tree.nodes.new("ShaderNodeTexImage")
-
-			specSeperateRGB = mat.node_tree.nodes.new("ShaderNodeSeparateRGB")
-			specSeperateRGB.location = Vector((-250, specY))
-			# specSeperateRGB.hide = True
-
-			specImage = bpy.data.images.load(filepath=specularImgPath)
-			specImage.colorspace_settings.name = 'Non-Color'
-
-			specTex.image = specImage
-			specTex.location = Vector((-600, specY))
-			# specTex.hide = True
-			# connect spec texture to rgb split
-			mat.node_tree.links.new(specTex.outputs[0], specSeperateRGB.inputs[0])
-			# connect rgb splits to principle
-			mat.node_tree.links.new(specSeperateRGB.outputs[0], principleBSDF.inputs['Specular'])
-			mat.node_tree.links.new(specSeperateRGB.outputs[1], principleBSDF.inputs['Metallic'])
-			mat.node_tree.links.new(specSeperateRGB.outputs[2], principleBSDF.inputs['Roughness'])
-		else:
-			print("WARNING: " + specularImgPath + " not found")
-
-	if textures[3] is not None:  # emission
-		emissiveImgPath = os.path.join(data_dir, textures[3][1:] + ".tga")
-		if verbose: print(emissiveImgPath)
-
-		if os.path.exists(emissiveImgPath):
-			emiTex = mat.node_tree.nodes.new("ShaderNodeTexImage")
-			emiShader = mat.node_tree.nodes.new("ShaderNodeEmission")
-			emiImage = bpy.data.images.load(filepath=emissiveImgPath)
-			emiTex.image = emiImage
-			# emission - location
-			emiTex.location = Vector((-200, -425))
-			emiShader.location = Vector((100, -425))
-			# connecting
-			mat.node_tree.links.new(emiTex.outputs[0], emiShader.inputs[0])
-			mat.node_tree.links.new(emiShader.outputs[0], addShader.inputs[1])
-		else:
-			print("WARNING: " + emissiveImgPath + " not found")
-
-	if apply_to_selected:
-		bpy.context.active_object.data.materials[0] = mat
-
-	print("Material imported")
+        if child_comps:
+            if use_gltf:
+                print("Nested worlds aren't supported yet with GLTF")
+            else:
+                for child_comp in child_comps:
+                    import_umap(child_comp, created)
 
 
-def cube():
-	bpy.ops.mesh.primitive_cube_add(size=100)
-	bpy.context.selected_objects[0].data = bpy.data.meshes["__fallback"]
+def import_material(m_idx: int, path: str, suffix: str, base_textures: list, tex_data: dict) -> bpy.types.Material:
+    # .mat is required to prevent conflicting with the empty ones imported by the PSK plugin
+    m_name = os.path.basename(path + ".mat" + suffix)
+    m = bpy.data.materials.get(m_name)
+
+    if not m:
+        for td_idx, td_entry in enumerate(tex_data):
+            if not td_entry:
+                continue
+            index = {1: 3, 2: 2}.get(td_idx, 0)
+            td_textures = td_entry[1]
+
+            for i, tex_entry in enumerate(base_textures[index]):
+                if i < len(td_textures) and td_textures[i]:
+                    base_textures[index][i] = td_textures[i]
+
+        m = bpy.data.materials.new(name=m_name)
+        m.use_nodes = True
+        tree = m.node_tree
+
+        for node in tree.nodes:
+            tree.nodes.remove(node)
+
+        m.blend_method = "OPAQUE"
+
+        def group(sub_tex_idx, location):
+            sh = tree.nodes.new("ShaderNodeGroup")
+            sh.location = location
+            sh.node_tree = tex_shader
+            sub_textures = base_textures[sub_tex_idx] if sub_tex_idx < len(base_textures) and base_textures[sub_tex_idx] and len(base_textures[sub_tex_idx]) > 0 else base_textures[0]
+
+            for tex_index, sub_tex in enumerate(sub_textures):
+                if sub_tex:
+                    img = get_or_load_img(sub_tex) if not sub_tex.endswith("/T_EmissiveColorChart") else None
+
+                    if img:
+                        d_tex = tree.nodes.new("ShaderNodeTexImage")
+                        d_tex.hide = True
+                        d_tex.location = [location[0] - 320, location[1] - tex_index * 40]
+
+                        if tex_index != 0:  # other than diffuse
+                            img.colorspace_settings.name = "Non-Color"
+
+                        d_tex.image = img
+                        tree.links.new(d_tex.outputs[0], sh.inputs[tex_index])
+
+                        if tex_index is 4:  # change mat blend method if there's an alpha mask texture
+                            m.blend_method = "HASHED"
+
+            return sh
+
+        mat_out = tree.nodes.new("ShaderNodeOutputMaterial")
+        mat_out.location = [300, 300]
+
+        if bpy.context.active_object.data.uv_layers.get("EXTRAUVS0"):
+            uvm_ng = tree.nodes.new("ShaderNodeGroup")
+            uvm_ng.location = [100, 300]
+            uvm_ng.node_tree = bpy.data.node_groups["UV Shader Mix"]
+            uv_map = tree.nodes.new("ShaderNodeUVMap")
+            uv_map.location = [-100, 700]
+            uv_map.uv_map = "EXTRAUVS0"
+            tree.links.new(uv_map.outputs[0], uvm_ng.inputs[0])
+            tree.links.new(group(0, [-100, 550]).outputs[0], uvm_ng.inputs[1])
+            tree.links.new(group(1, [-100, 300]).outputs[0], uvm_ng.inputs[2])
+            tree.links.new(group(2, [-100, 50]).outputs[0], uvm_ng.inputs[3])
+            tree.links.new(group(3, [-100, -200]).outputs[0], uvm_ng.inputs[4])
+            tree.links.new(uvm_ng.outputs[0], mat_out.inputs[0])
+        else:
+            tree.links.new(group(0, [100, 300]).outputs[0], mat_out.inputs[0])
+
+        print("Material imported")
+
+    if m_idx < len(bpy.context.active_object.data.materials):
+        bpy.context.active_object.data.materials[m_idx] = m
+
+
+def fallback() -> None:
+    bpy.ops.mesh.primitive_plane_add(size=1)
+    bpy.context.active_object.data = bpy.data.meshes["__fallback" if use_cube_as_fallback else "__empty"]
+
+
+def get_or_load_img(img_path: str) -> bpy.types.Image:
+    img_path = os.path.join(data_dir, img_path[1:] + ".tga")
+    existing = bpy.data.images.get(os.path.basename(img_path))
+
+    if existing:
+        return existing
+    elif os.path.exists(img_path):
+        if verbose:
+            print(img_path)
+        return bpy.data.images.load(filepath=img_path)
+    else:
+        print("WARNING: " + img_path + " not found")
+        return None
+
+
+def cleanup() -> None:
+    for block in bpy.data.meshes:
+        if block.users == 0:
+            bpy.data.meshes.remove(block)
+
+    for block in bpy.data.materials:
+        if block.users == 0:
+            bpy.data.materials.remove(block)
+
+    for block in bpy.data.textures:
+        if block.users == 0:
+            bpy.data.textures.remove(block)
+
+    for block in bpy.data.images:
+        if block.users == 0:
+            bpy.data.images.remove(block)
+
+
+def string_hash_code(s: str) -> int:
+    h = 0
+    for c in s:
+        h = (31 * h + ord(c)) & 0xFFFFFFFF
+    return ((h + 0x80000000) & 0xFFFFFFFF) - 0x80000000
 
 
 start = int(time.time() * 1000.0)
 
+# create UV shader mix node group, credits to @FriesFX
+uvm = bpy.data.node_groups.get("UV Shader Mix")
+
+if not uvm:
+    uvm = bpy.data.node_groups.new(name="UV Shader Mix", type="ShaderNodeTree")
+    # for node in tex_shader.nodes: tex_shader.nodes.remove(node)
+
+    mix_1 = uvm.nodes.new("ShaderNodeMixShader")
+    mix_2 = uvm.nodes.new("ShaderNodeMixShader")
+    mix_3 = uvm.nodes.new("ShaderNodeMixShader")
+    mix_4 = uvm.nodes.new("ShaderNodeMixShader")
+    mix_1.location = [-500, 300]
+    mix_2.location = [-300, 300]
+    mix_3.location = [-100, 300]
+    mix_4.location = [100, 300]
+    uvm.links.new(mix_1.outputs[0], mix_2.inputs[1])
+    uvm.links.new(mix_2.outputs[0], mix_3.inputs[1])
+    uvm.links.new(mix_3.outputs[0], mix_4.inputs[1])
+
+    x = -1700
+    y = 700
+    sep = uvm.nodes.new("ShaderNodeSeparateRGB")
+    sep.location = [x + 200, y - 200]
+
+    m1_1 = uvm.nodes.new("ShaderNodeMath")
+    m1_2 = uvm.nodes.new("ShaderNodeMath")
+    m1_3 = uvm.nodes.new("ShaderNodeMath")
+    m1_1.location = [x + 400, y]
+    m1_2.location = [x + 400, y - 200]
+    m1_3.location = [x + 400, y - 400]
+    m1_1.operation = "LESS_THAN"
+    m1_2.operation = "LESS_THAN"
+    m1_3.operation = "LESS_THAN"
+    m1_1.inputs[1].default_value = 1.420
+    m1_2.inputs[1].default_value = 1.720
+    m1_3.inputs[1].default_value = 3.000
+    uvm.links.new(sep.outputs[0], m1_1.inputs[0])
+    uvm.links.new(sep.outputs[0], m1_2.inputs[0])
+    uvm.links.new(sep.outputs[0], m1_3.inputs[0])
+
+    add_1_2 = uvm.nodes.new("ShaderNodeMath")
+    add_1_2.location = [x + 600, y - 300]
+    add_1_2.operation = "ADD"
+    uvm.links.new(m1_1.outputs[0], add_1_2.inputs[0])
+    uvm.links.new(m1_2.outputs[0], add_1_2.inputs[1])
+
+    m2_1 = uvm.nodes.new("ShaderNodeMath")
+    m2_2 = uvm.nodes.new("ShaderNodeMath")
+    m2_3 = uvm.nodes.new("ShaderNodeMath")
+    m2_4 = uvm.nodes.new("ShaderNodeMath")
+    m2_1.location = [x + 800, y]
+    m2_2.location = [x + 800, y - 200]
+    m2_3.location = [x + 800, y - 400]
+    m2_4.location = [x + 800, y - 600]
+    m2_1.operation = "ADD"
+    m2_2.operation = "SUBTRACT"
+    m2_3.operation = "SUBTRACT"
+    m2_4.operation = "LESS_THAN"
+    m2_1.use_clamp = True
+    m2_2.use_clamp = True
+    m2_3.use_clamp = True
+    m2_4.use_clamp = True
+    m2_1.inputs[1].default_value = 0
+    m2_4.inputs[1].default_value = 0.700
+    uvm.links.new(m1_1.outputs[0], m2_1.inputs[0])
+    uvm.links.new(m1_2.outputs[0], m2_2.inputs[0])
+    uvm.links.new(m1_1.outputs[0], m2_2.inputs[1])
+    uvm.links.new(m1_3.outputs[0], m2_3.inputs[0])
+    uvm.links.new(add_1_2.outputs[0], m2_3.inputs[1])
+    uvm.links.new(m1_3.outputs[0], m2_4.inputs[0])
+
+    uvm.links.new(m2_1.outputs[0], mix_1.inputs[0])
+    uvm.links.new(m2_2.outputs[0], mix_4.inputs[0])
+    uvm.links.new(m2_3.outputs[0], mix_2.inputs[0])
+    uvm.links.new(m2_4.outputs[0], mix_3.inputs[0])
+
+    # I/O
+    g_in = uvm.nodes.new("NodeGroupInput")
+    g_out = uvm.nodes.new("NodeGroupOutput")
+    g_in.location = [-1700, 220]
+    g_out.location = [300, 300]
+    uvm.links.new(g_in.outputs[0], sep.inputs[0])
+    uvm.links.new(g_in.outputs[1], mix_1.inputs[2])
+    uvm.links.new(g_in.outputs[2], mix_2.inputs[2])
+    uvm.links.new(g_in.outputs[3], mix_3.inputs[2])
+    uvm.links.new(g_in.outputs[4], mix_4.inputs[2])
+    uvm.links.new(mix_4.outputs[0], g_out.inputs[0])
+
+# create texture shader node group, credit @Lucas7yoshi
+tex_shader = bpy.data.node_groups.get("Texture Shader")
+
+if not tex_shader:
+    tex_shader = bpy.data.node_groups.new(name="Texture Shader", type="ShaderNodeTree")
+    # for node in tex_shader.nodes: tex_shader.nodes.remove(node)
+
+    g_in = tex_shader.nodes.new("NodeGroupInput")
+    g_out = tex_shader.nodes.new("NodeGroupOutput")
+    g_in.location = [-700, 0]
+    g_out.location = [350, 300]
+
+    principled_bsdf = tex_shader.nodes.new(type="ShaderNodeBsdfPrincipled")
+    principled_bsdf.location = [50, 300]
+    tex_shader.links.new(principled_bsdf.outputs[0], g_out.inputs[0])
+
+    # diffuse
+    tex_shader.links.new(g_in.outputs[0], principled_bsdf.inputs["Base Color"])
+
+    # normal
+    norm_y = -1
+    norm_curve = tex_shader.nodes.new("ShaderNodeRGBCurve")
+    norm_map = tex_shader.nodes.new("ShaderNodeNormalMap")
+    norm_curve.location = [-500, norm_y]
+    norm_map.location = [-200, norm_y]
+    norm_curve.mapping.curves[1].points[0].location = [0, 1]
+    norm_curve.mapping.curves[1].points[1].location = [1, 0]
+    tex_shader.links.new(g_in.outputs[1], norm_curve.inputs[1])
+    tex_shader.links.new(norm_curve.outputs[0], norm_map.inputs[1])
+    tex_shader.links.new(norm_map.outputs[0], principled_bsdf.inputs["Normal"])
+    tex_shader.inputs[1].default_value = [0.5, 0.5, 1, 1]
+
+    # specular
+    spec_y = 140
+    spec_separate_rgb = tex_shader.nodes.new("ShaderNodeSeparateRGB")
+    spec_separate_rgb.location = [-200, spec_y]
+    tex_shader.links.new(g_in.outputs[2], spec_separate_rgb.inputs[0])
+    tex_shader.links.new(spec_separate_rgb.outputs[0], principled_bsdf.inputs["Specular"])
+    tex_shader.links.new(spec_separate_rgb.outputs[1], principled_bsdf.inputs["Metallic"])
+    tex_shader.links.new(spec_separate_rgb.outputs[2], principled_bsdf.inputs["Roughness"])
+    tex_shader.inputs[2].default_value = [0.5, 0, 0.5, 1]
+
+    # emission
+    tex_shader.links.new(g_in.outputs[3], principled_bsdf.inputs["Emission"])
+    tex_shader.inputs[3].default_value = [0, 0, 0, 1]
+
+    # alpha
+    alpha_separate_rgb = tex_shader.nodes.new("ShaderNodeSeparateRGB")
+    alpha_separate_rgb.location = [-200, -180]
+    tex_shader.links.new(g_in.outputs[4], alpha_separate_rgb.inputs[0])
+    tex_shader.links.new(alpha_separate_rgb.outputs[0], principled_bsdf.inputs["Alpha"])
+    tex_shader.inputs[4].default_value = [1, 0, 0, 1]
+
+    tex_shader.inputs[0].name = "Diffuse"
+    tex_shader.inputs[1].name = "Normal"
+    tex_shader.inputs[2].name = "Specular"
+    tex_shader.inputs[3].name = "Emission"
+    tex_shader.inputs[4].name = "Alpha"
+
 # clear all objects except camera
 for obj in bpy.context.scene.objects:
-	if obj.type == "CAMERA": continue
-	obj.select_set(True)
+    if obj.type != "CAMERA":
+        obj.select_set(True)
 
 bpy.ops.object.delete()
-
-# clear materials
-for block in [block for block in bpy.data.materials if block.users == 0]:
-	bpy.data.materials.remove(block)
-
-# clear meshes
-for block in [block for block in bpy.data.meshes if block.users == 0]:
-	bpy.data.meshes.remove(block)
+cleanup()
 
 # setup helper objects
 # 1. fallback cube
-bpy.ops.mesh.primitive_cube_add(size=100)
-fallback_cube = bpy.context.selected_objects[0]
+bpy.ops.mesh.primitive_cube_add(size=2)
+fallback_cube = bpy.context.active_object
 fallback_cube.name = "__fallback"
 fallback_cube.data.name = "__fallback"
 
 # 2. empty mesh
 bpy.ops.mesh.primitive_cube_add(size=1)
-empty_mesh = bpy.context.selected_objects[0]
+empty_mesh = bpy.context.active_object
 empty_mesh.name = "__empty"
 empty_mesh.data.name = "__empty"
+empty_mesh.data.clear_geometry()
 
 # do it!
+if not data_dir.endswith(os.sep):
+    data_dir += os.sep
+
 with open(os.path.join(data_dir, "processed.json")) as file:
-	import_umap(json.loads(file.read()))
+    import_umap(json.loads(file.read()))
 
 # delete helper objects
 bpy.ops.object.select_all(action="DESELECT")
 fallback_cube.select_set(True)
 empty_mesh.select_set(True)
 bpy.ops.object.delete()
+cleanup()
 
 print("All done in " + str(int((time.time() * 1000.0) - start)) + "ms")
