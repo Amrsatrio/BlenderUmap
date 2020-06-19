@@ -11,6 +11,7 @@ from math import *
 # Change the value to the working directory of the Java program with the bat. I'm leaving mine here.
 data_dir = r"C:\Users\satri\Documents\AppProjects\BlenderUmap\run"
 
+clear_scene = True
 reuse_meshes = True
 use_cube_as_fallback = True
 use_gltf = False
@@ -128,7 +129,7 @@ def import_material(m_idx: int, path: str, suffix: str, base_textures: list, tex
         for td_idx, td_entry in enumerate(tex_data):
             if not td_entry:
                 continue
-            index = {1: 3, 2: 2}.get(td_idx, 0)
+            index = {1: 3, 2: 2, 3: 2}.get(td_idx, 0)
             td_textures = td_entry[1]
 
             for i, tex_entry in enumerate(base_textures[index]):
@@ -390,11 +391,13 @@ if not tex_shader:
     tex_shader.inputs[4].name = "Alpha"
 
 # clear all objects except camera
-for obj in bpy.context.scene.objects:
-    if obj.type != "CAMERA":
-        obj.select_set(True)
+if clear_scene:
+    for obj in bpy.context.scene.objects:
+        if obj.type != "CAMERA":
+            obj.select_set(True)
 
-bpy.ops.object.delete()
+    bpy.ops.object.delete()
+
 cleanup()
 
 # setup helper objects

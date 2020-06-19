@@ -224,11 +224,11 @@ public class Main {
 						if (texDataPkg != null) {
 							BuildingTextureData td = StructFallbackReflectionUtilKt.mapToClass(texDataPkg.getExports().get(0).getBaseObject(), BuildingTextureData.class, null);
 							JsonArray textures = new JsonArray();
-							textures.add(td.Diffuse != null && td.Diffuse.getIndex() != 0 ? td.Diffuse.getOuterImportObject().getObjectName().getText() : null);
-							textures.add(td.Normal != null && td.Normal.getIndex() != 0 ? td.Normal.getOuterImportObject().getObjectName().getText() : null);
-							textures.add(td.Specular != null && td.Specular.getIndex() != 0 ? td.Specular.getOuterImportObject().getObjectName().getText() : null);
-							textures.add(td.Emissive != null && td.Emissive.getIndex() != 0 ? td.Emissive.getOuterImportObject().getObjectName().getText() : null);
-							textures.add(td.Mask != null && td.Mask.getIndex() != 0 ? td.Mask.getOuterImportObject().getObjectName().getText() : null);
+							addToArray(textures, td.Diffuse);
+							addToArray(textures, td.Normal);
+							addToArray(textures, td.Specular);
+							addToArray(textures, td.Emissive);
+							addToArray(textures, td.Mask);
 							JsonArray entry = new JsonArray();
 							entry.add(textureDataPath);
 							entry.add(textures);
@@ -277,6 +277,16 @@ public class Main {
 		}
 
 		return comps;
+	}
+
+	private static void addToArray(JsonArray array, FPackageIndex index) {
+		if (index != null && index.getIndex() != 0) {
+			String s = index.getOuterImportObject().getObjectName().getText();
+			toExport.add(s);
+			array.add(s);
+		} else {
+			array.add((JsonElement) null);
+		}
 	}
 
 	private static Package loadIfNot(String pkg) {
