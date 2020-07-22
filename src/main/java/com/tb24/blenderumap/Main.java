@@ -1,5 +1,5 @@
 /*
- * (C) 2020 amrsatrio. All rights reserved.
+ * (C) amrsatrio. All rights reserved.
  */
 package com.tb24.blenderumap;
 
@@ -15,45 +15,48 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-import kotlin.collections.MapsKt;
+import javax.imageio.ImageIO;
+
 import kotlin.text.StringsKt;
-import me.fungames.jfortniteparse.fileprovider.DefaultFileProvider;
+import me.fungames.jfortniteparse.converters.ue4.meshes.StaticMeshesKt;
+import me.fungames.jfortniteparse.converters.ue4.meshes.psk.ExportStaticMeshKt;
+import me.fungames.jfortniteparse.converters.ue4.textures.TexturesKt;
 import me.fungames.jfortniteparse.ue4.FGuid;
 import me.fungames.jfortniteparse.ue4.assets.Package;
 import me.fungames.jfortniteparse.ue4.assets.exports.UExport;
+import me.fungames.jfortniteparse.ue4.assets.exports.UStaticMesh;
+import me.fungames.jfortniteparse.ue4.assets.exports.tex.UTexture;
+import me.fungames.jfortniteparse.ue4.assets.objects.FObjectExport;
 import me.fungames.jfortniteparse.ue4.assets.objects.FPackageIndex;
-import me.fungames.jfortniteparse.ue4.assets.objects.FPropertyTag;
 import me.fungames.jfortniteparse.ue4.assets.objects.FRotator;
 import me.fungames.jfortniteparse.ue4.assets.objects.FSoftObjectPath;
 import me.fungames.jfortniteparse.ue4.assets.objects.FStructFallback;
 import me.fungames.jfortniteparse.ue4.assets.objects.FVector;
 import me.fungames.jfortniteparse.ue4.assets.util.FName;
 import me.fungames.jfortniteparse.ue4.assets.util.StructFallbackReflectionUtilKt;
-import me.fungames.jfortniteparse.ue4.pak.GameFile;
-import me.fungames.jfortniteparse.ue4.pak.PakFileReader;
 import me.fungames.jfortniteparse.ue4.versions.GameKt;
 import me.fungames.jfortniteparse.ue4.versions.Ue4Version;
 
+import static com.tb24.blenderumap.AssetUtilsKt.asString;
+import static com.tb24.blenderumap.AssetUtilsKt.getProp;
+import static com.tb24.blenderumap.AssetUtilsKt.getProps;
 import static com.tb24.blenderumap.JWPSerializer.GSON;
 
 public class Main {
 	private static final Logger LOGGER = LoggerFactory.getLogger("BlenderUmap");
 	private static Config config;
-	private static File jsonsFolder = new File("jsons");
-	private static DefaultFileProvider provider;
-	private static Map<GameFile, Package> loaded = new HashMap<>();
-	private static Set<String> toExport = new HashSet<>();
+	private static MyFileProvider provider;
+	private static Set<FPackageIndex> exportQueue = new HashSet<>();
 	private static long start = System.currentTimeMillis();
 
 	public static void main(String[] args) {
@@ -83,29 +86,12 @@ public class Main {
 				throw new MainException("Please specify ExportPackage.");
 			}
 
-			provider = new DefaultFileProvider(paksDir, config.UEVersion);
-			Map<FGuid, byte[]> keysToSubmit = new HashMap<>();
+			provider = new MyFileProvider(paksDir, config.UEVersion, config.EncryptionKeys, config.bDumpAssets);
 
-			for (Config.EncryptionKey entry : config.EncryptionKeys) {
-				if (isEmpty(entry.FileName)) {
-					keysToSubmit.put(entry.Guid, entry.Key);
-				} else {
-					Optional<PakFileReader> foundGuid = provider.getUnloadedPaks().stream().filter(it -> it.getFileName().equals(entry.FileName)).findFirst();
-
-					if (foundGuid.isPresent()) {
-						keysToSubmit.put(foundGuid.get().getPakInfo().getEncryptionKeyGuid(), entry.Key);
-					} else {
-						LOGGER.warn("PAK file not found: " + entry.FileName);
-					}
-				}
-			}
-
-			provider.submitKeys(keysToSubmit);
 			JsonArray components = exportAndProduceProcessed(config.ExportPackage);
-
 			if (components == null) return;
 
-			if (config.bRunUModel && !toExport.isEmpty()) {
+			if (!exportQueue.isEmpty()) {
 				exportUmodel();
 			}
 
@@ -121,7 +107,7 @@ public class Main {
 			if (e instanceof MainException) {
 				LOGGER.info(e.getMessage());
 			} else {
-				LOGGER.error("Uncaught exception", e);
+				LOGGER.error("An unexpected error has occurred, please report", e);
 			}
 
 			System.exit(1);
@@ -129,7 +115,7 @@ public class Main {
 	}
 
 	private static JsonArray exportAndProduceProcessed(String s) {
-		Package pkg = loadIfNot(s);
+		Package pkg = provider.loadIfNot(s);
 
 		if (pkg == null) {
 			return null;
@@ -140,43 +126,31 @@ public class Main {
 
 		JsonArray comps = new JsonArray();
 
-		for (UExport export : pkg.getExports()) {
+		for (FObjectExport objectExport : pkg.getExportMap()) {
+			UExport export = objectExport.exportObject.getValue();
 			String exportType = export.getExportType();
+			if (exportType.equals("LODActor")) continue;
 
-			if (exportType.equals("LODActor")) {
-				continue;
-			}
-
-			FPackageIndex smc = getProp(export, "StaticMeshComponent", FPackageIndex.class);
-
-			if (smc == null) {
-				continue;
-			}
-
-			UExport refSMC = pkg.getExports().get(smc.getIndex() - 1);
+			UExport staticMeshExp = provider.loadObject(getProp(export, "StaticMeshComponent", FPackageIndex.class));
+			if (staticMeshExp == null) continue;
 
 			// identifiers
 			JsonArray comp = new JsonArray();
 			comps.add(comp);
 			FGuid guid = getProp(export, "MyGuid", FGuid.class);
-			comp.add(guid != null ? guidAsString(guid) : UUID.randomUUID().toString().replace("-", ""));
+			comp.add(guid != null ? asString(guid) : UUID.randomUUID().toString().replace("-", ""));
 			comp.add(exportType);
 
 			// region mesh
-			String meshS = null;
-			FPackageIndex mesh = getProp(refSMC, "StaticMesh", FPackageIndex.class);
+			FPackageIndex mesh = getProp(staticMeshExp, "StaticMesh", FPackageIndex.class);
 
 			if (mesh == null || mesh.getIndex() == 0) { // read the actor class to find the mesh
-				Package actorPkg = loadIfNot(export.getExport().getClassIndex().getOuterImportObject().getObjectName().getText());
+				UExport actorBlueprint = provider.loadObject(objectExport.getClassIndex());
 
-				if (actorPkg != null) {
-					for (UExport actorExp : actorPkg.getExports()) {
-						if (actorExp.getExportType().endsWith("StaticMeshComponent")) {
-							mesh = getProp(actorExp, "StaticMesh", FPackageIndex.class);
-
-							if (mesh != null && mesh.getIndex() != 0) {
-								break;
-							}
+				if (actorBlueprint != null) {
+					for (UExport actorExp : actorBlueprint.getOwner().getExports()) {
+						if (actorExp.getExportType().endsWith("StaticMeshComponent") && (mesh = getProp(actorExp, "StaticMesh", FPackageIndex.class)) != null && mesh.getIndex() != 0) {
+							break;
 						}
 					}
 				}
@@ -188,24 +162,21 @@ public class Main {
 			List<Mat> materials = new ArrayList<>();
 
 			if (mesh != null && mesh.getIndex() != 0) {
-				toExport.add(meshS = mesh.getOuterImportObject().getObjectName().getText());
+				UExport meshExport = provider.loadObject(mesh);
 
-				if (config.bReadMaterials) {
-					Package meshPkg = loadIfNot(meshS);
+				if (meshExport != null) {
+					if (config.bUseUModel) {
+						exportQueue.add(mesh);
+					} else {
+						ExportStaticMeshKt.export(StaticMeshesKt.convertMesh((UStaticMesh) meshExport)).writeToDir(getExportDir(meshExport));
+					}
 
-					if (meshPkg != null) {
-						for (UExport meshExport : meshPkg.getExports()) {
-							if (meshExport.getExportType().equals("StaticMesh")) {
-								//ExportStaticMeshKt.export(StaticMeshesKt.convertMesh((UStaticMesh) meshExport)).writeToDir(new File("TestExportMesh/" + meshS.substring(1)).getParentFile());
-								FStructFallback[] staticMaterials = getProp(meshExport, "StaticMaterials", FStructFallback[].class);
+					if (config.bReadMaterials) {
+						FStructFallback[] staticMaterials = getProp(meshExport, "StaticMaterials", FStructFallback[].class);
 
-								if (staticMaterials != null) {
-									for (FStructFallback staticMaterial : staticMaterials) {
-										materials.add(new Mat(getProp(staticMaterial.getProperties(), "MaterialInterface", FPackageIndex.class)));
-									}
-								}
-
-								break;
+						if (staticMaterials != null) {
+							for (FStructFallback staticMaterial : staticMaterials) {
+								materials.add(new Mat(getProp(staticMaterial.getProperties(), "MaterialInterface", FPackageIndex.class)));
 							}
 						}
 					}
@@ -213,30 +184,27 @@ public class Main {
 			}
 
 			if (config.bReadMaterials) {
-				FPackageIndex material = getProp(refSMC, "BaseMaterial", FPackageIndex.class);
+				FPackageIndex material = getProp(staticMeshExp, "BaseMaterial", FPackageIndex.class);
 				FPackageIndex[] overrideMaterials = getProp(export, "OverrideMaterials", FPackageIndex[].class);
 
-				for (FPackageIndex textureData : getProps(export.getBaseObject().getProperties(), "TextureData", FPackageIndex.class)) {
-					if (textureData != null && textureData.getIndex() != 0) {
-						String textureDataPath = textureData.getOuterImportObject().getObjectName().getText();
-						Package texDataPkg = loadIfNot(textureDataPath);
+				for (FPackageIndex textureDataIdx : getProps(export.getBaseObject().getProperties(), "TextureData", FPackageIndex.class)) {
+					UExport texDataExp = provider.loadObject(textureDataIdx);
 
-						if (texDataPkg != null) {
-							BuildingTextureData td = StructFallbackReflectionUtilKt.mapToClass(texDataPkg.getExports().get(0).getBaseObject(), BuildingTextureData.class, null);
-							JsonArray textures = new JsonArray();
-							addToArray(textures, td.Diffuse);
-							addToArray(textures, td.Normal);
-							addToArray(textures, td.Specular);
-							addToArray(textures, td.Emissive);
-							addToArray(textures, td.Mask);
-							JsonArray entry = new JsonArray();
-							entry.add(textureDataPath);
-							entry.add(textures);
-							textureDataArr.add(entry);
+					if (texDataExp != null) {
+						BuildingTextureData td = StructFallbackReflectionUtilKt.mapToClass(texDataExp.getBaseObject(), BuildingTextureData.class, null);
+						JsonArray textures = new JsonArray();
+						addToArray(textures, td.Diffuse);
+						addToArray(textures, td.Normal);
+						addToArray(textures, td.Specular);
+						addToArray(textures, td.Emissive);
+						addToArray(textures, td.Mask);
+						JsonArray entry = new JsonArray();
+						entry.add(pkgIndexToDirPath(textureDataIdx));
+						entry.add(textures);
+						textureDataArr.add(entry);
 
-							if (td.OverrideMaterial != null && td.OverrideMaterial.getIndex() != 0) {
-								material = td.OverrideMaterial;
-							}
+						if (td.OverrideMaterial != null && td.OverrideMaterial.getIndex() != 0) {
+							material = td.OverrideMaterial;
 						}
 					} else {
 						textureDataArr.add((JsonElement) null);
@@ -267,12 +235,12 @@ public class Main {
 			}
 			// endregion
 
-			comp.add(mesh != null && mesh.getIndex() != 0 ? meshS : null);
+			comp.add(pkgIndexToDirPath(mesh));
 			comp.add(matsObj);
 			comp.add(textureDataArr);
-			comp.add(vector(getProp(refSMC, "RelativeLocation", FVector.class)));
-			comp.add(rotator(getProp(refSMC, "RelativeRotation", FRotator.class)));
-			comp.add(vector(getProp(refSMC, "RelativeScale3D", FVector.class)));
+			comp.add(vector(getProp(staticMeshExp, "RelativeLocation", FVector.class)));
+			comp.add(rotator(getProp(staticMeshExp, "RelativeRotation", FRotator.class)));
+			comp.add(vector(getProp(staticMeshExp, "RelativeScale3D", FVector.class)));
 			comp.add(children);
 		}
 
@@ -281,44 +249,64 @@ public class Main {
 
 	private static void addToArray(JsonArray array, FPackageIndex index) {
 		if (index != null && index.getIndex() != 0) {
-			String s = index.getOuterImportObject().getObjectName().getText();
-			toExport.add(s);
-			array.add(s);
+			exportTexture(index);
+			array.add(pkgIndexToDirPath(index));
 		} else {
 			array.add((JsonElement) null);
 		}
 	}
 
-	private static Package loadIfNot(String pkg) {
-		GameFile gameFile = provider.findGameFile(pkg);
+	private static void exportTexture(FPackageIndex index) {
+		if (config.bUseUModel) {
+			exportQueue.add(index);
+			return;
+		}
 
-		if (gameFile != null) {
-			return loadIfNot(gameFile);
-		} else {
-			LOGGER.warn("Package " + pkg + " not found");
-			return null;
+		try {
+			UTexture texExport = (UTexture) provider.loadObject(index);
+			File output = new File(getExportDir(texExport), texExport.getName() + ".png");
+
+			if (output.exists()) {
+				LOGGER.debug("Texture already exists, skipping: " + output.getAbsolutePath());
+			} else {
+				LOGGER.info("Saving texture to " + output.getAbsolutePath());
+				ImageIO.write(TexturesKt.toBufferedImage(texExport), "png", output);
+			}
+		} catch (IOException e) {
+			LOGGER.warn("Failed to save texture", e);
 		}
 	}
 
-	private static Package loadIfNot(GameFile pkg) {
-		return MapsKt.getOrPut(loaded, pkg, () -> {
-			LOGGER.info("Loading " + pkg);
-			Package loadedPkg = provider.loadGameFile(pkg);
+	public static File getExportDir(UExport exportObj) {
+		String pkgPath = MyFileProvider.compactFilePath(exportObj.getOwner().getName());
+		pkgPath = StringsKt.substringBeforeLast(pkgPath, '.', pkgPath);
 
-			if (loadedPkg != null && config.bDumpAssets) {
-				File file = new File(jsonsFolder, pkg.getPathWithoutExtension() + ".json");
-				LOGGER.info("Writing JSON to " + file.getAbsolutePath());
-				file.getParentFile().mkdirs();
+		if (pkgPath.startsWith("/")) {
+			pkgPath = pkgPath.substring(1);
+		}
 
-				try (FileWriter writer = new FileWriter(file)) {
-					GSON.toJson(loadedPkg.getExports(), writer);
-				} catch (IOException e) {
-					LOGGER.error("Writing failed", e);
-				}
-			}
+		File outputDir = new File(pkgPath).getParentFile();
+		String pkgName = StringsKt.substringAfterLast(pkgPath, '/', pkgPath);
 
-			return loadedPkg;
-		});
+		if (!exportObj.getName().equals(pkgName)) {
+			outputDir = new File(outputDir, pkgName);
+		}
+
+		outputDir.mkdirs();
+		return outputDir;
+	}
+
+	public static String pkgIndexToDirPath(FPackageIndex index) {
+		if (index == null) return null;
+
+		int i = index.getIndex();
+		if (i == 0) return null;
+
+		String pkgPath = MyFileProvider.compactFilePath(index.getOwner().getName());
+		pkgPath = StringsKt.substringBeforeLast(pkgPath, '.', pkgPath);
+		pkgPath = i > 0 ? pkgPath : index.getOuterImportObject().getObjectName().getText();
+		String objectName = (i > 0 ? index.getExportObject().getObjectName() : index.getImportObject().getObjectName()).getText();
+		return StringsKt.substringAfterLast(pkgPath, '/', pkgPath).equals(objectName) ? pkgPath : pkgPath + '/' + objectName;
 	}
 
 	private static void exportUmodel() throws InterruptedException, IOException {
@@ -326,8 +314,8 @@ public class Main {
 			pw.println("-path=\"" + config.PaksDirectory + '\"');
 			pw.println("-game=ue4." + GameKt.GAME_UE4_GET_MINOR(config.UEVersion.getGame()));
 
-			if (config.EncryptionKeys.length > 0) {
-				pw.println("-aes=0x" + ByteArrayUtils.encode(config.EncryptionKeys[0].Key));
+			if (config.EncryptionKeys.size() > 0) { // TODO run umodel multiple times if there's more than one encryption key
+				pw.println("-aes=0x" + ByteArrayUtils.encode(config.EncryptionKeys.get(0).Key));
 			}
 
 			pw.println("-out=\"" + new File("").getAbsolutePath() + '\"');
@@ -338,13 +326,21 @@ public class Main {
 
 			boolean bFirst = true;
 
-			for (String export : toExport) {
+			for (FPackageIndex export : exportQueue) {
+				int i = export.getIndex();
+				if (i == 0) continue;
+
+				String packagePath = i > 0 ? MyFileProvider.compactFilePath(export.getOwner().getName()) : export.getOuterImportObject().getObjectName().getText();
+				String objectName = (i > 0 ? export.getExportObject().getObjectName() : export.getImportObject().getObjectName()).getText();
+
 				if (bFirst) {
 					bFirst = false;
 					pw.println("-export");
-					pw.println(export);
+					pw.println(packagePath);
+					pw.println(objectName);
 				} else {
-					pw.println("-pkg=" + export);
+					pw.println("-pkg=" + packagePath);
+					pw.println("-obj=" + objectName);
 				}
 			}
 		}
@@ -356,48 +352,10 @@ public class Main {
 		int exitCode = pb.start().waitFor();
 
 		if (exitCode == 0) {
-			toExport.clear();
+			exportQueue.clear();
 		} else {
 			LOGGER.warn("UModel returned exit code " + exitCode + ", some assets might weren't exported successfully");
 		}
-	}
-
-	private static <T> T getProp(List<FPropertyTag> properties, String name, Class<T> clazz) {
-		for (FPropertyTag prop : properties) {
-			if (name.equals(prop.getName().getText())) {
-				return (T) prop.getTagTypeValue(clazz, null);
-			}
-		}
-
-		return null;
-	}
-
-	private static <T> T getProp(UExport export, String name, Class<T> clazz) {
-		return getProp(export.getBaseObject().getProperties(), name, clazz);
-	}
-
-	public static <T> T[] getProps(List<FPropertyTag> properties, String name, Class<T> clazz) {
-		List<FPropertyTag> collected = new ArrayList<>();
-		int maxIndex = -1;
-
-		for (FPropertyTag prop : properties) {
-			if (prop.getName().getText().equals(name)) {
-				collected.add(prop);
-				maxIndex = Math.max(maxIndex, prop.getArrayIndex());
-			}
-		}
-
-		T[] out = (T[]) Array.newInstance(clazz, maxIndex + 1);
-
-		for (FPropertyTag prop : collected) {
-			out[prop.getArrayIndex()] = (T) prop.getTagTypeValue(clazz, null);
-		}
-
-		return out;
-	}
-
-	private static String guidAsString(FGuid guid) {
-		return String.format("%08x%08x%08x%08x", guid.getPart1(), guid.getPart2(), guid.getPart3(), guid.getPart4());
 	}
 
 	private static JsonArray vector(FVector vector) {
@@ -424,7 +382,7 @@ public class Main {
 
 	private static class Mat {
 		public FPackageIndex name;
-		public Map<String, String> textureMap = new HashMap<>();
+		public Map<String, FPackageIndex> textureMap = new HashMap<>();
 
 		public Mat(FPackageIndex name) {
 			this.name = name;
@@ -436,10 +394,11 @@ public class Main {
 
 		public void populateTextures(FPackageIndex pkgIndex) {
 			if (pkgIndex.getIndex() == 0) return;
-			Package matPkg = loadIfNot(pkgIndex.getOuterImportObject().getObjectName().getText());
-			if (matPkg == null) return;
-			UExport matFirstExp = matPkg.getExports().get(0);
-			FStructFallback[] textureParameterValues = getProp(matFirstExp, "TextureParameterValues", FStructFallback[].class);
+
+			UExport material = provider.loadObject(pkgIndex);
+			if (material == null) return;
+
+			FStructFallback[] textureParameterValues = getProp(material, "TextureParameterValues", FStructFallback[].class);
 
 			if (textureParameterValues != null) {
 				for (FStructFallback textureParameterValue : textureParameterValues) {
@@ -449,13 +408,13 @@ public class Main {
 						FPackageIndex parameterValue = getProp(textureParameterValue.getProperties(), "ParameterValue", FPackageIndex.class);
 
 						if (parameterValue != null && parameterValue.getIndex() != 0 && !textureMap.containsKey(name.getText())) {
-							textureMap.put(name.getText(), parameterValue.getOuterImportObject().getObjectName().getText());
+							textureMap.put(name.getText(), parameterValue);
 						}
 					}
 				}
 			}
 
-			FPackageIndex parent = getProp(matFirstExp, "Parent", FPackageIndex.class);
+			FPackageIndex parent = getProp(material, "Parent", FPackageIndex.class);
 
 			if (parent != null && parent.getIndex() != 0) {
 				populateTextures(parent);
@@ -463,9 +422,14 @@ public class Main {
 		}
 
 		public void addToObj(JsonObject obj) {
-			String[][] textures = { // d n s e a
+			if (name.getIndex() == 0) {
+				obj.add(Integer.toHexString(hashCode()), null);
+				return;
+			}
+
+			FPackageIndex[][] textures = { // d n s e a
 					{
-							textureMap.getOrDefault("Trunk_BaseColor", textureMap.get("Diffuse")),
+							textureMap.getOrDefault("Trunk_BaseColor", textureMap.getOrDefault("Diffuse", textureMap.get("DiffuseTexture"))),
 							textureMap.getOrDefault("Trunk_Normal", textureMap.get("Normals")),
 							textureMap.getOrDefault("Trunk_Specular", textureMap.get("SpecularMasks")),
 							textureMap.get("EmissiveTexture"),
@@ -494,23 +458,31 @@ public class Main {
 					}
 			};
 
-			for (int i = 0; i < textures.length; i++) {
+			JsonArray array = new JsonArray(textures.length);
+
+			for (FPackageIndex[] texture : textures) {
 				boolean empty = true;
 
-				for (int j = 0; j < textures[i].length; j++) {
-					empty &= textures[i][j] == null;
+				for (FPackageIndex index : texture) {
+					empty &= index == null || index.getIndex() == 0;
 
-					if (textures[i][j] != null) {
-						toExport.add(textures[i][j]);
+					if (index != null && index.getIndex() != 0) {
+						exportTexture(index);
 					}
 				}
 
-				if (empty) {
-					textures[i] = new String[0];
+				JsonArray subArray = new JsonArray(texture.length);
+
+				if (!empty) {
+					for (FPackageIndex index : texture) {
+						subArray.add(pkgIndexToDirPath(index));
+					}
 				}
+
+				array.add(subArray);
 			}
 
-			obj.add(name.getIndex() != 0 ? name.getOuterImportObject().getObjectName().getText() : Integer.toHexString(hashCode()), GSON.toJsonTree(textures));
+			obj.add(pkgIndexToDirPath(name), array);
 		}
 	}
 
@@ -525,21 +497,15 @@ public class Main {
 		// public Float ResourceCost;
 	}
 
-	private static class Config {
+	public static class Config {
 		public String PaksDirectory = "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks";
 		public Ue4Version UEVersion = Ue4Version.GAME_UE4_LATEST;
-		public EncryptionKey[] EncryptionKeys = {};
+		public List<MyFileProvider.EncryptionKey> EncryptionKeys = Collections.emptyList();
 		public boolean bReadMaterials = false;
-		public boolean bRunUModel = true;
+		public boolean bUseUModel = true;
 		public String UModelAdditionalArgs = "";
 		public boolean bDumpAssets = false;
 		public String ExportPackage;
-
-		private static class EncryptionKey {
-			public FGuid Guid = FGuid.Companion.getMainGuid();
-			public String FileName;
-			public byte[] Key = {};
-		}
 	}
 
 	private static class MainException extends Exception {

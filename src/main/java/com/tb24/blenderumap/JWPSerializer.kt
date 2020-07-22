@@ -7,7 +7,6 @@ import com.google.gson.*
 import me.fungames.jfortniteparse.ue4.FGuid
 import me.fungames.jfortniteparse.ue4.assets.exports.UDataTable
 import me.fungames.jfortniteparse.ue4.assets.exports.UExport
-import me.fungames.jfortniteparse.ue4.assets.exports.UObject
 import me.fungames.jfortniteparse.ue4.assets.objects.*
 import me.fungames.jfortniteparse.ue4.assets.util.FName
 import me.fungames.jfortniteparse.util.parseHexBinary
@@ -21,9 +20,12 @@ import java.util.*
 @ExperimentalUnsignedTypes
 object JWPSerializer {
 	@JvmField
+	var sUseNonstandardFormat = false
+
+	@JvmField
 	val GSON: Gson = GsonBuilder()
 			.disableHtmlEscaping()
-			.setPrettyPrinting()
+			//.setPrettyPrinting()
 			.serializeNulls()
 			.registerTypeAdapter(ByteArray::class.java, ByteArraySerializer())
 			.registerTypeAdapter(UByte::class.java, JsonSerializer<UByte> { src, typeOfSrc, context -> JsonPrimitive(src.toByte()) })
@@ -42,6 +44,14 @@ object JWPSerializer {
 				JsonObject().apply {
 					add("min", context.serialize(src.min))
 					add("max", context.serialize(src.max))
+					add("valid", context.serialize(src.isValid))
+				}
+			})
+			.registerTypeAdapter(FBox2D::class.java, JsonSerializer<FBox2D> { src, typeOfSrc, context ->
+				JsonObject().apply {
+					add("min", context.serialize(src.min))
+					add("max", context.serialize(src.max))
+					add("valid", context.serialize(src.isValid))
 				}
 			})
 			.registerTypeAdapter(FGameplayTagContainer::class.java, JsonSerializer<FGameplayTagContainer> { src, typeOfSrc, context ->
@@ -62,23 +72,35 @@ object JWPSerializer {
 				JsonPrimitive(src.text)
 			})
 			.registerTypeAdapter(FPackageIndex::class.java, JsonSerializer<FPackageIndex> { src, typeOfSrc, context ->
-				var out: JsonElement? = null
-				val importObject = src.importObject
+				val out: JsonElement
 
-				if (src.index >= 0) {
-					out = JsonObject()
-					out.addProperty("export", src.index)
-				} else if (importObject != null) {
+				if (src.index < 0) {
+					val importObject = src.importObject
 					out = JsonArray()
-					out.add(context.serialize(importObject.objectName))
+					out.add(context.serialize(importObject!!.objectName))
 					out.add(context.serialize(src.outerImportObject!!.objectName))
 
 					if (src.outerImportObject!!.outerIndex.importObject != null) {
 						out.add(context.serialize(src.outerImportObject!!.outerIndex.importObject!!.objectName))
 					}
+				} else {
+					out = JsonObject()
+					out.addProperty("export", src.index)
+
+					/*if (src.index > 0) {
+						out.addProperty("__object_name", src.exportObject!!.objectName.text)
+					}*/
 				}
 
 				out
+			})
+			.registerTypeAdapter(FQuat::class.java, JsonSerializer<FQuat> { src, typeOfSrc, context ->
+				JsonObject().apply {
+					addProperty("x", src.x)
+					addProperty("y", src.y)
+					addProperty("z", src.z)
+					addProperty("w", src.w)
+				}
 			})
 			.registerTypeAdapter(FRotator::class.java, JsonSerializer<FRotator> { src, typeOfSrc, context ->
 				JsonObject().apply {
@@ -141,21 +163,37 @@ object JWPSerializer {
 			.create()
 
 	private fun serializeProperties(obj: JsonObject, properties: List<FPropertyTag>, context: JsonSerializationContext) {
-		for (propertyTag in properties) {
-			obj.add(propertyTag.name.text, context.serialize(propertyTag.tag))
+		properties.forEach {
+			obj.add(it.name.text + (if (it.arrayIndex != 0) "[${it.arrayIndex}]" else ""), context.serialize(it.tag))
 		}
 	}
 
 	private class ExportSerializer : JsonSerializer<UExport> {
 		override fun serialize(src: UExport, typeOfSrc: Type, context: JsonSerializationContext): JsonElement? {
 			val obj = JsonObject()
+			if (sUseNonstandardFormat && src.export != null) obj.addProperty("object_name", src.export!!.objectName.text)
 			obj.addProperty("export_type", src.exportType)
 
-			if (src is UObject) {
-				serializeProperties(obj, src.properties, context)
-			} else if (src is UDataTable) {
-				for ((key, value) in src.rows) {
-					obj.add(key.text, context.serialize(value))
+			if (src !is UDataTable || sUseNonstandardFormat)
+				serializeProperties(obj, src.baseObject.properties, context)
+
+			if (src is UDataTable) {
+				if (sUseNonstandardFormat) {
+					obj.add("rows", JsonObject().apply {
+						for ((key, value) in src.rows) {
+							add(key.text, JsonObject().apply {
+								addProperty("export_type", "RowStruct")
+								serializeProperties(this, value.properties, context)
+							})
+						}
+					})
+				} else {
+					for ((key, value) in src.rows) {
+						obj.add(key.text, JsonObject().apply {
+							addProperty("export_type", "RowStruct")
+							serializeProperties(this, value.properties, context)
+						})
+					}
 				}
 			}
 

@@ -1,6 +1,6 @@
 """
-BlenderUmap v0.2.0
-(C) 2020 amrsatrio. All rights reserved.
+BlenderUmap v0.2.2
+(C) amrsatrio. All rights reserved.
 """
 import bpy
 import json
@@ -48,9 +48,9 @@ def import_umap(comps: list, attach_parent: bpy.types.Object = None) -> None:
             td_suffix = ""
 
             if mats and len(mats) > 0:
-                key += "_{:08x}".format(abs(string_hash_code(";".join(mats.keys()))))
+                key += f"_{abs(string_hash_code(';'.join(mats.keys()))):08x}"
             if texture_data and len(texture_data) > 0:
-                td_suffix = "_{:08x}".format(abs(string_hash_code(";".join([it[0] if it else "" for it in texture_data]))))
+                td_suffix = f"_{abs(string_hash_code(';'.join([it[0] if it else '' for it in texture_data]))):08x}"
                 key += td_suffix
 
             existing_mesh = bpy.data.meshes.get(key) if reuse_meshes else None
@@ -96,7 +96,8 @@ def import_umap(comps: list, attach_parent: bpy.types.Object = None) -> None:
                     bpy.ops.object.shade_smooth()
 
                     for m_idx, (m_path, m_textures) in enumerate(mats.items()):
-                        import_material(m_idx, m_path, td_suffix, m_textures, texture_data)
+                        if m_textures:
+                            import_material(m_idx, m_path, td_suffix, m_textures, texture_data)
                 else:
                     print("WARNING: Failure importing mesh, defaulting to fallback mesh")
                     fallback()
@@ -167,7 +168,7 @@ def import_material(m_idx: int, path: str, suffix: str, base_textures: list, tex
                         tree.links.new(d_tex.outputs[0], sh.inputs[tex_index])
 
                         if tex_index is 4:  # change mat blend method if there's an alpha mask texture
-                            m.blend_method = "HASHED"
+                            m.blend_method = "CLIP"
 
             return sh
 
@@ -195,6 +196,8 @@ def import_material(m_idx: int, path: str, suffix: str, base_textures: list, tex
     if m_idx < len(bpy.context.active_object.data.materials):
         bpy.context.active_object.data.materials[m_idx] = m
 
+    return m
+
 
 def fallback() -> None:
     bpy.ops.mesh.primitive_plane_add(size=1)
@@ -202,15 +205,27 @@ def fallback() -> None:
 
 
 def get_or_load_img(img_path: str) -> bpy.types.Image:
-    img_path = os.path.join(data_dir, img_path[1:] + ".tga")
-    existing = bpy.data.images.get(os.path.basename(img_path))
+    name = os.path.basename(img_path)
+    existing = bpy.data.images.get(name)
 
     if existing:
         return existing
-    elif os.path.exists(img_path):
+
+    img_path = os.path.join(data_dir, img_path[1:])
+
+    if os.path.exists(img_path + ".tga"):
+        img_path += ".tga"
+    elif os.path.exists(img_path + ".png"):
+        img_path += ".png"
+    elif os.path.exists(img_path + ".dds"):
+        img_path += ".dds"
+
+    if os.path.exists(img_path):
         if verbose:
             print(img_path)
-        return bpy.data.images.load(filepath=img_path)
+        loaded = bpy.data.images.load(filepath=img_path)
+        loaded.name = name
+        return loaded
     else:
         print("WARNING: " + img_path + " not found")
         return None
