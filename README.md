@@ -6,7 +6,7 @@ A Java tool to export Fortnite .umaps and a Python script to import it. More gam
   **32-bit Java won't work with this tool!**
 * Extract the zip file
 * If you want to export from Fortnite, execute `Fill Fortnite AES Keys.bat`
-* Edit [config.json](#config.json) to suit your needs
+* Edit [config.json](#configjson) to suit your needs
 * Execute `Run Exporter.bat`
 * Make sure you have the [Blender PSK import/export plugin](https://github.com/Befzz/blender3d_import_psk_psa) **at least version 2.7.13** installed. If you use prior versions of the plugin the scaling of the props will appear broken.
 * In Blender, import the python file as a script (via scripting tab)
