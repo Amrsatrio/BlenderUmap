@@ -1,5 +1,6 @@
 package com.tb24.blenderumap;
 
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,12 +13,10 @@ import java.util.Optional;
 
 import kotlin.collections.MapsKt;
 import me.fungames.jfortniteparse.fileprovider.DefaultFileProvider;
-import me.fungames.jfortniteparse.ue4.FGuid;
 import me.fungames.jfortniteparse.ue4.assets.Package;
 import me.fungames.jfortniteparse.ue4.assets.exports.UExport;
-import me.fungames.jfortniteparse.ue4.assets.objects.FObjectExport;
-import me.fungames.jfortniteparse.ue4.assets.objects.FObjectImport;
-import me.fungames.jfortniteparse.ue4.assets.objects.FPackageIndex;
+import me.fungames.jfortniteparse.ue4.objects.core.misc.FGuid;
+import me.fungames.jfortniteparse.ue4.objects.uobject.FObjectExport;
 import me.fungames.jfortniteparse.ue4.pak.GameFile;
 import me.fungames.jfortniteparse.ue4.pak.PakFileReader;
 import me.fungames.jfortniteparse.ue4.versions.Ue4Version;
@@ -38,8 +37,6 @@ public class MyFileProvider extends DefaultFileProvider {
 
 		for (EncryptionKey entry : encryptionKeys) {
 			if (entry.FileName != null && !entry.FileName.isEmpty()) {
-				keysToSubmit.put(entry.Guid, entry.Key);
-			} else {
 				Optional<PakFileReader> foundGuid = getUnloadedPaks().stream().filter(it -> it.getFileName().equals(entry.FileName)).findFirst();
 
 				if (foundGuid.isPresent()) {
@@ -47,34 +44,37 @@ public class MyFileProvider extends DefaultFileProvider {
 				} else {
 					LOGGER.warn("PAK file not found: " + entry.FileName);
 				}
+			} else {
+				keysToSubmit.put(entry.Guid, entry.Key);
 			}
 		}
 
 		submitKeys(keysToSubmit);
 	}
 
-	public Package loadIfNot(String pkg) {
-		GameFile gameFile = findGameFile(pkg);
+	@Override
+	public GameFile findGameFile(@NotNull String filePath) {
+		GameFile gameFile = super.findGameFile(filePath);
 
-		if (gameFile != null) {
-			return loadIfNot(gameFile);
-		} else {
-			LOGGER.warn("Package " + pkg + " not found");
-			return null;
+		if (gameFile == null) {
+			LOGGER.warn("File " + filePath + " not found");
 		}
+
+		return gameFile;
 	}
 
-	public Package loadIfNot(GameFile pkg) {
-		return MapsKt.getOrPut(loaded, pkg, () -> {
-			LOGGER.info("Loading " + pkg);
-			Package loadedPkg = loadGameFile(pkg);
+	@Override
+	public Package loadGameFile(@NotNull GameFile file) {
+		return MapsKt.getOrPut(loaded, file, () -> {
+			LOGGER.info("Loading " + file);
+			Package loadedPkg = super.loadGameFile(file);
 
 			if (loadedPkg != null && bDumpAssets) {
-				File file = new File(JSONS_FOLDER, pkg.getPathWithoutExtension() + ".json");
-				LOGGER.info("Writing JSON to " + file.getAbsolutePath());
-				file.getParentFile().mkdirs();
+				File jsonDump = new File(JSONS_FOLDER, file.getPathWithoutExtension() + ".json");
+				LOGGER.info("Writing JSON to " + jsonDump.getAbsolutePath());
+				jsonDump.getParentFile().mkdirs();
 
-				try (FileWriter writer = new FileWriter(file)) {
+				try (FileWriter writer = new FileWriter(jsonDump)) {
 					GSON.toJson(loadedPkg.getExports(), writer);
 				} catch (IOException e) {
 					LOGGER.error("Writing failed", e);
@@ -99,36 +99,12 @@ public class MyFileProvider extends DefaultFileProvider {
 			objectName = objectPath.substring(objectPath.lastIndexOf('/') + 1);
 		}
 
-		Package pkg = loadIfNot(pkgPath);
+		Package pkg = loadGameFile(pkgPath);
 
 		for (FObjectExport export : pkg.getExportMap()) {
 			if (export.getObjectName().getText().equals(objectName)) {
 				return export.getExportObject().getValue();
 			}
-		}
-
-		return null;
-	}
-
-	public UExport loadObject(FPackageIndex index) {
-		if (index == null) return null;
-
-		Package owner = index.getOwner();
-		int i = index.getIndex();
-
-		if (i < 0) { // import
-			FObjectImport imp = owner.getImportMap().get(-i - 1);
-			Package pkg = loadIfNot(owner.getImportMap().get(-imp.getOuterIndex().getIndex() - 1).getObjectName().getText());
-
-			if (pkg != null) {
-				for (FObjectExport export : pkg.getExportMap()) {
-					if (export.getClassIndex().getName().equals(imp.getClassName().getText()) && export.getObjectName().getText().equals(imp.getObjectName().getText())) {
-						return export.getExportObject().getValue();
-					}
-				}
-			}
-		} else if (i > 0) { // export
-			return owner.getExportMap().get(i - 1).getExportObject().getValue();
 		}
 
 		return null;

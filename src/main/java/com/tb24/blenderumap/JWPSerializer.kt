@@ -4,11 +4,18 @@
 package com.tb24.blenderumap
 
 import com.google.gson.*
-import me.fungames.jfortniteparse.ue4.FGuid
 import me.fungames.jfortniteparse.ue4.assets.exports.UDataTable
 import me.fungames.jfortniteparse.ue4.assets.exports.UExport
 import me.fungames.jfortniteparse.ue4.assets.objects.*
-import me.fungames.jfortniteparse.ue4.assets.util.FName
+import me.fungames.jfortniteparse.ue4.objects.core.i18n.FText
+import me.fungames.jfortniteparse.ue4.objects.core.i18n.FTextHistory
+import me.fungames.jfortniteparse.ue4.objects.core.math.FBox
+import me.fungames.jfortniteparse.ue4.objects.core.math.FBox2D
+import me.fungames.jfortniteparse.ue4.objects.core.misc.FGuid
+import me.fungames.jfortniteparse.ue4.objects.gameplaytags.FGameplayTagContainer
+import me.fungames.jfortniteparse.ue4.objects.uobject.FName
+import me.fungames.jfortniteparse.ue4.objects.uobject.FPackageIndex
+import me.fungames.jfortniteparse.ue4.objects.uobject.FSoftObjectPath
 import me.fungames.jfortniteparse.util.parseHexBinary
 import java.lang.reflect.Type
 import java.util.*
@@ -60,14 +67,6 @@ object JWPSerializer {
 				}
 			})
 			.registerTypeAdapter(FGuid::class.java, GuidSerializer())
-			.registerTypeAdapter(FLinearColor::class.java, JsonSerializer<FLinearColor> { src, typeOfSrc, context ->
-				JsonObject().apply {
-					addProperty("r", src.r)
-					addProperty("g", src.g)
-					addProperty("b", src.b)
-					addProperty("a", src.a)
-				}
-			})
 			.registerTypeAdapter(FName::class.java, JsonSerializer<FName> { src, typeOfSrc, context ->
 				JsonPrimitive(src.text)
 			})
@@ -93,21 +92,6 @@ object JWPSerializer {
 				}
 
 				out
-			})
-			.registerTypeAdapter(FQuat::class.java, JsonSerializer<FQuat> { src, typeOfSrc, context ->
-				JsonObject().apply {
-					addProperty("x", src.x)
-					addProperty("y", src.y)
-					addProperty("z", src.z)
-					addProperty("w", src.w)
-				}
-			})
-			.registerTypeAdapter(FRotator::class.java, JsonSerializer<FRotator> { src, typeOfSrc, context ->
-				JsonObject().apply {
-					addProperty("pitch", src.pitch)
-					addProperty("yaw", src.yaw)
-					addProperty("roll", src.roll)
-				}
 			})
 			.registerTypeAdapter(UScriptArray::class.java, JsonSerializer<UScriptArray> { src, typeOfSrc, context ->
 				JsonArray().apply { src.contents.forEach { add(context.serialize(it)) } }
@@ -147,24 +131,12 @@ object JWPSerializer {
 					}
 				}
 			})
-			.registerTypeAdapter(FVector::class.java, JsonSerializer<FVector> { src, typeOfSrc, context ->
-				JsonObject().apply {
-					addProperty("x", src.x)
-					addProperty("y", src.y)
-					addProperty("z", src.z)
-				}
-			})
-			.registerTypeAdapter(FVector2D::class.java, JsonSerializer<FVector2D> { src, typeOfSrc, context ->
-				JsonObject().apply {
-					addProperty("x", src.x)
-					addProperty("y", src.y)
-				}
-			})
 			.create()
 
 	private fun serializeProperties(obj: JsonObject, properties: List<FPropertyTag>, context: JsonSerializationContext) {
 		properties.forEach {
 			obj.add(it.name.text + (if (it.arrayIndex != 0) "[${it.arrayIndex}]" else ""), context.serialize(it.tag))
+//			obj.add(it.name.text + (if (it.arrayIndex != 0) "[${it.arrayIndex}]" else ""), context.serialize(it.prop))
 		}
 	}
 

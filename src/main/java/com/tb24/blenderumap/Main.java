@@ -31,19 +31,19 @@ import kotlin.text.StringsKt;
 import me.fungames.jfortniteparse.converters.ue4.meshes.StaticMeshesKt;
 import me.fungames.jfortniteparse.converters.ue4.meshes.psk.ExportStaticMeshKt;
 import me.fungames.jfortniteparse.converters.ue4.textures.TexturesKt;
-import me.fungames.jfortniteparse.ue4.FGuid;
 import me.fungames.jfortniteparse.ue4.assets.Package;
 import me.fungames.jfortniteparse.ue4.assets.exports.UExport;
 import me.fungames.jfortniteparse.ue4.assets.exports.UStaticMesh;
-import me.fungames.jfortniteparse.ue4.assets.exports.tex.UTexture;
-import me.fungames.jfortniteparse.ue4.assets.objects.FObjectExport;
-import me.fungames.jfortniteparse.ue4.assets.objects.FPackageIndex;
-import me.fungames.jfortniteparse.ue4.assets.objects.FRotator;
-import me.fungames.jfortniteparse.ue4.assets.objects.FSoftObjectPath;
+import me.fungames.jfortniteparse.ue4.assets.exports.tex.UTexture2D;
 import me.fungames.jfortniteparse.ue4.assets.objects.FStructFallback;
-import me.fungames.jfortniteparse.ue4.assets.objects.FVector;
-import me.fungames.jfortniteparse.ue4.assets.util.FName;
 import me.fungames.jfortniteparse.ue4.assets.util.StructFallbackReflectionUtilKt;
+import me.fungames.jfortniteparse.ue4.objects.core.math.FRotator;
+import me.fungames.jfortniteparse.ue4.objects.core.math.FVector;
+import me.fungames.jfortniteparse.ue4.objects.core.misc.FGuid;
+import me.fungames.jfortniteparse.ue4.objects.uobject.FName;
+import me.fungames.jfortniteparse.ue4.objects.uobject.FObjectExport;
+import me.fungames.jfortniteparse.ue4.objects.uobject.FPackageIndex;
+import me.fungames.jfortniteparse.ue4.objects.uobject.FSoftObjectPath;
 import me.fungames.jfortniteparse.ue4.versions.GameKt;
 import me.fungames.jfortniteparse.ue4.versions.Ue4Version;
 
@@ -88,8 +88,8 @@ public class Main {
 
 			provider = new MyFileProvider(paksDir, config.UEVersion, config.EncryptionKeys, config.bDumpAssets);
 
-			JsonArray components = exportAndProduceProcessed(config.ExportPackage);
-			if (components == null) return;
+			Package pkg = exportAndProduceProcessed(config.ExportPackage);
+			if (pkg == null) return;
 
 			if (!exportQueue.isEmpty()) {
 				exportUmodel();
@@ -99,7 +99,8 @@ public class Main {
 			LOGGER.info("Writing to " + file.getAbsolutePath());
 
 			try (FileWriter writer = new FileWriter(file)) {
-				GSON.toJson(components, writer);
+//				GSON.toJson(components, writer);
+				GSON.toJson(MyFileProvider.compactFilePath(pkg.getName()), writer);
 			}
 
 			LOGGER.info(String.format("All done in %,.1f sec. In the Python script, replace the line with data_dir with this line below:\n\ndata_dir = r\"%s\"", (System.currentTimeMillis() - start) / 1000.0F, new File("").getAbsolutePath()));
@@ -114,8 +115,8 @@ public class Main {
 		}
 	}
 
-	private static JsonArray exportAndProduceProcessed(String s) {
-		Package pkg = provider.loadIfNot(s);
+	private static Package exportAndProduceProcessed(String s) {
+		Package pkg = provider.loadGameFile(s);
 
 		if (pkg == null) {
 			return null;
@@ -139,7 +140,7 @@ public class Main {
 			comps.add(comp);
 			FGuid guid = getProp(export, "MyGuid", FGuid.class);
 			comp.add(guid != null ? asString(guid) : UUID.randomUUID().toString().replace("-", ""));
-			comp.add(exportType);
+			comp.add(objectExport.getObjectName().getText());
 
 			// region mesh
 			FPackageIndex mesh = getProp(staticMeshExp, "StaticMesh", FPackageIndex.class);
@@ -230,7 +231,8 @@ public class Main {
 			if (additionalWorlds != null) {
 				for (FSoftObjectPath additionalWorld : additionalWorlds) {
 					String text = additionalWorld.getAssetPathName().getText();
-					children.add(exportAndProduceProcessed(StringsKt.substringBeforeLast(text, '.', text) + ".umap"));
+					Package cpkg = exportAndProduceProcessed(StringsKt.substringBeforeLast(text, '.', text) + ".umap");
+					children.add(cpkg != null ? MyFileProvider.compactFilePath(cpkg.getName()) : null);
 				}
 			}
 			// endregion
@@ -244,7 +246,17 @@ public class Main {
 			comp.add(children);
 		}
 
-		return comps;
+		File file = new File(MyFileProvider.JSONS_FOLDER, MyFileProvider.compactFilePath(pkg.getName()) + ".processed.json");
+		file.getParentFile().mkdirs();
+		LOGGER.info("Writing to " + file.getAbsolutePath());
+
+		try (FileWriter writer = new FileWriter(file)) {
+			GSON.toJson(comps, writer);
+		} catch (IOException e) {
+			LOGGER.error("Writing failed", e);
+		}
+
+		return pkg;
 	}
 
 	private static void addToArray(JsonArray array, FPackageIndex index) {
@@ -263,7 +275,7 @@ public class Main {
 		}
 
 		try {
-			UTexture texExport = (UTexture) provider.loadObject(index);
+			UTexture2D texExport = (UTexture2D) provider.loadObject(index);
 			File output = new File(getExportDir(texExport), texExport.getName() + ".png");
 
 			if (output.exists()) {

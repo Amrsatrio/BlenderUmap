@@ -1,5 +1,5 @@
 """
-BlenderUmap v0.2.2
+BlenderUmap v0.3.0
 (C) amrsatrio. All rights reserved.
 """
 import bpy
@@ -11,18 +11,35 @@ from math import *
 # Change the value to the working directory of the Java program with the bat. I'm leaving mine here.
 data_dir = r"C:\Users\satri\Documents\AppProjects\BlenderUmap\run"
 
-clear_scene = True
+reuse_maps = True
 reuse_meshes = True
 use_cube_as_fallback = True
-use_gltf = False
 verbose = True
+import_collection_name = "Imported"
+import_collection = bpy.data.collections.get(import_collection_name)
 
 
 # ---------- END INPUTS, DO NOT MODIFY ANYTHING BELOW UNLESS YOU NEED TO ----------
-def import_umap(comps: list, attach_parent: bpy.types.Object = None) -> None:
+def import_umap(processed_map_path: str,
+                into_collection: bpy.types.Collection = import_collection) -> bpy.types.Object:
+    map_name = processed_map_path[processed_map_path.rindex("/") + 1:processed_map_path.rindex(".")]
+    map_collection = bpy.data.collections.get(map_name)
+
+    if reuse_maps and map_collection:
+        return place_map(map_collection, into_collection)
+
+    map_collection = bpy.data.collections.new(map_name)
+    map_collection_inst = place_map(map_collection, into_collection)
+    map_scene = bpy.data.scenes.get(map_collection.name) or bpy.data.scenes.new(map_collection.name)
+    map_scene.collection.children.link(map_collection)
+    map_layer_collection = map_scene.view_layers[0].layer_collection.children[map_collection.name]
+
+    with open(os.path.join(data_dir, "jsons" + processed_map_path + ".processed.json")) as file:
+        comps = json.loads(file.read())
+
     for comp_i, comp in enumerate(comps):
         guid = comp[0]
-        export_type = comp[1]
+        name = comp[1]
         mesh_path = comp[2]
         mats = comp[3]
         texture_data = comp[4]
@@ -30,17 +47,21 @@ def import_umap(comps: list, attach_parent: bpy.types.Object = None) -> None:
         rotation = comp[6] or [0, 0, 0]
         scale = comp[7] or [1, 1, 1]
         child_comps = comp[8]
-
-        name = export_type + (("_" + guid[:8]) if guid else "")
         print("\nActor %d of %d: %s" % (comp_i + 1, len(comps), name))
 
         if child_comps and len(child_comps) > 0:
-            bpy.ops.mesh.primitive_plane_add(size=1)
-            bpy.context.active_object.data = bpy.data.meshes["__empty"]
-        elif not mesh_path:
+            for i, child_comp in enumerate(child_comps):
+                apply_name_and_transforms(import_umap(child_comp, map_collection), "%s_%d" % (name, i), location, rotation, scale)
+
+            continue
+
+        bpy.context.window.scene = map_scene
+        bpy.context.view_layer.active_layer_collection = map_layer_collection
+
+        if not mesh_path:
             print("WARNING: No mesh, defaulting to fallback mesh")
             fallback()
-        else:
+        else:  # Import the mesh
             if mesh_path.startswith("/"):
                 mesh_path = mesh_path[1:]
 
@@ -62,32 +83,21 @@ def import_umap(comps: list, attach_parent: bpy.types.Object = None) -> None:
                 bpy.context.active_object.data = existing_mesh
             else:
                 mesh_import_result = None
-
-                if use_gltf:
-                    final_dir = os.path.join(data_dir, mesh_path + ".gltf")
-                    if verbose:
-                        print("Mesh:", final_dir)
-                    if os.path.exists(final_dir):
-                        mesh_import_result = bpy.ops.import_scene.gltf(filepath=final_dir)
-                    else:
-                        print("WARNING: Mesh not found, defaulting to fallback mesh")
-                        fallback()
+                final_dir = os.path.join(data_dir, mesh_path)
+                mesh_path_ = mesh_path
+                if os.path.exists(final_dir + ".psk"):
+                    final_dir += ".psk"
+                    mesh_path_ += ".psk"
+                elif os.path.exists(final_dir + ".pskx"):
+                    final_dir += ".pskx"
+                    mesh_path_ += ".pskx"
+                if verbose:
+                    print("Mesh:", final_dir)
+                if os.path.exists(final_dir):
+                    mesh_import_result = bpy.ops.import_scene.psk(bReorientBones=True, directory=data_dir, files=[{"name": mesh_path_}])
                 else:
-                    final_dir = os.path.join(data_dir, mesh_path)
-                    mesh_path_ = mesh_path
-                    if os.path.exists(final_dir + ".psk"):
-                        final_dir += ".psk"
-                        mesh_path_ += ".psk"
-                    elif os.path.exists(final_dir + ".pskx"):
-                        final_dir += ".pskx"
-                        mesh_path_ += ".pskx"
-                    if verbose:
-                        print("Mesh:", final_dir)
-                    if os.path.exists(final_dir):
-                        mesh_import_result = bpy.ops.import_scene.psk(bReorientBones=True, directory=data_dir, files=[{"name": mesh_path_}])
-                    else:
-                        print("WARNING: Mesh not found, defaulting to fallback mesh")
-                        fallback()
+                    print("WARNING: Mesh not found, defaulting to fallback mesh")
+                    fallback()
 
                 if mesh_import_result == {"FINISHED"}:
                     if verbose:
@@ -102,23 +112,9 @@ def import_umap(comps: list, attach_parent: bpy.types.Object = None) -> None:
                     print("WARNING: Failure importing mesh, defaulting to fallback mesh")
                     fallback()
 
-        created = bpy.context.active_object
-        created.name = name
-        created.location = [location[0] * 0.01, location[1] * 0.01 * -1, location[2] * 0.01]
-        created.rotation_mode = "XYZ"
-        created.rotation_euler = [radians(rotation[2] + (90 if use_gltf else 0)), radians(rotation[0] * -1), radians(rotation[1] * -1)]
-        created.scale = scale
+        apply_name_and_transforms(bpy.context.active_object, name, location, rotation, scale)
 
-        if attach_parent:
-            print("Attaching to parent", attach_parent.name)
-            created.parent = attach_parent
-
-        if child_comps:
-            if use_gltf:
-                print("Nested worlds aren't supported yet with GLTF")
-            else:
-                for child_comp in child_comps:
-                    import_umap(child_comp, created)
+    return map_collection_inst
 
 
 def import_material(m_idx: int, path: str, suffix: str, base_textures: list, tex_data: dict) -> bpy.types.Material:
@@ -168,7 +164,7 @@ def import_material(m_idx: int, path: str, suffix: str, base_textures: list, tex
                         tree.links.new(d_tex.outputs[0], sh.inputs[tex_index])
 
                         if tex_index is 4:  # change mat blend method if there's an alpha mask texture
-                            m.blend_method = "CLIP"
+                            m.blend_method = 'CLIP'
 
             return sh
 
@@ -199,9 +195,27 @@ def import_material(m_idx: int, path: str, suffix: str, base_textures: list, tex
     return m
 
 
-def fallback() -> None:
+def fallback():
     bpy.ops.mesh.primitive_plane_add(size=1)
     bpy.context.active_object.data = bpy.data.meshes["__fallback" if use_cube_as_fallback else "__empty"]
+
+
+def apply_name_and_transforms(ob, name, location, rotation, scale):
+    ob.name = name
+    ob.location = [location[0] * 0.01, location[1] * 0.01 * -1, location[2] * 0.01]
+    ob.rotation_mode = "XYZ"
+    ob.rotation_euler = [radians(rotation[2]),
+                         radians(rotation[0] * -1),
+                         radians(rotation[1] * -1)]
+    ob.scale = scale
+
+
+def place_map(collection: bpy.types.Collection, into_collection: bpy.types.Collection):
+    c_inst = bpy.data.objects.new(collection.name, None)
+    c_inst.instance_type = 'COLLECTION'
+    c_inst.instance_collection = collection
+    into_collection.objects.link(c_inst)
+    return c_inst
 
 
 def get_or_load_img(img_path: str) -> bpy.types.Image:
@@ -225,13 +239,14 @@ def get_or_load_img(img_path: str) -> bpy.types.Image:
             print(img_path)
         loaded = bpy.data.images.load(filepath=img_path)
         loaded.name = name
+        loaded.alpha_mode = 'CHANNEL_PACKED'
         return loaded
     else:
         print("WARNING: " + img_path + " not found")
         return None
 
 
-def cleanup() -> None:
+def cleanup():
     for block in bpy.data.meshes:
         if block.users == 0:
             bpy.data.meshes.remove(block)
@@ -405,15 +420,24 @@ if not tex_shader:
     tex_shader.inputs[3].name = "Emission"
     tex_shader.inputs[4].name = "Alpha"
 
-# clear all objects except camera
-if clear_scene:
-    for obj in bpy.context.scene.objects:
-        if obj.type != "CAMERA":
-            obj.select_set(True)
+# make sure we're on main scene to deal with the fallback objects
+main_scene = bpy.data.scenes.get("Scene") or bpy.data.scenes.new("Scene")
+bpy.context.window.scene = main_scene
+
+# prepare collection for imports
+if import_collection:
+    bpy.ops.object.select_all(action='DESELECT')
+
+    for obj in import_collection.objects:
+        obj.select_set(True)
 
     bpy.ops.object.delete()
+else:
+    import_collection = bpy.data.collections.new(import_collection_name)
+    main_scene.collection.children.link(import_collection)
 
 cleanup()
+
 
 # setup helper objects
 # 1. fallback cube
@@ -436,8 +460,11 @@ if not data_dir.endswith(os.sep):
 with open(os.path.join(data_dir, "processed.json")) as file:
     import_umap(json.loads(file.read()))
 
+# go back to main scene
+bpy.context.window.scene = main_scene
+
 # delete helper objects
-bpy.ops.object.select_all(action="DESELECT")
+bpy.ops.object.select_all(action='DESELECT')
 fallback_cube.select_set(True)
 empty_mesh.select_set(True)
 bpy.ops.object.delete()

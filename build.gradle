@@ -5,7 +5,7 @@ plugins {
 }
 
 group 'com.tb24'
-version '0.2.2'
+version '0.3.0'
 
 sourceCompatibility = 1.8
 
@@ -47,6 +47,7 @@ dependencies {
 	implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.3.8'
 	implementation 'com.google.code.gson:gson:2.8.6'
 //	implementation 'com.mojang:brigadier:1.0.17'
+	implementation 'com.squareup.okhttp3:okhttp:3.14.9'
 	implementation 'me.fungames:JFortniteParse:+' // :3.0.2'
 	implementation 'org.slf4j:slf4j-api:1.7.30'
 	testImplementation 'junit:junit:4.12'
