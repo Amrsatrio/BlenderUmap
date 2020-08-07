@@ -28,15 +28,16 @@ import java.util.UUID;
 import javax.imageio.ImageIO;
 
 import kotlin.text.StringsKt;
-import me.fungames.jfortniteparse.converters.ue4.meshes.StaticMeshesKt;
-import me.fungames.jfortniteparse.converters.ue4.meshes.psk.ExportStaticMeshKt;
-import me.fungames.jfortniteparse.converters.ue4.textures.TexturesKt;
 import me.fungames.jfortniteparse.ue4.assets.Package;
 import me.fungames.jfortniteparse.ue4.assets.exports.UExport;
+import me.fungames.jfortniteparse.ue4.assets.exports.UObject;
 import me.fungames.jfortniteparse.ue4.assets.exports.UStaticMesh;
 import me.fungames.jfortniteparse.ue4.assets.exports.tex.UTexture2D;
 import me.fungames.jfortniteparse.ue4.assets.objects.FStructFallback;
 import me.fungames.jfortniteparse.ue4.assets.util.StructFallbackReflectionUtilKt;
+import me.fungames.jfortniteparse.ue4.converters.meshes.StaticMeshesKt;
+import me.fungames.jfortniteparse.ue4.converters.meshes.psk.ExportStaticMeshKt;
+import me.fungames.jfortniteparse.ue4.converters.textures.TexturesKt;
 import me.fungames.jfortniteparse.ue4.objects.core.math.FRotator;
 import me.fungames.jfortniteparse.ue4.objects.core.math.FVector;
 import me.fungames.jfortniteparse.ue4.objects.core.misc.FGuid;
@@ -115,7 +116,7 @@ public class Main {
 		}
 	}
 
-	private static Package exportAndProduceProcessed(String s) {
+	private static Package exportAndProduceProcessed(String s) throws Exception {
 		Package pkg = provider.loadGameFile(s);
 
 		if (pkg == null) {
@@ -169,7 +170,7 @@ public class Main {
 					if (config.bUseUModel) {
 						exportQueue.add(mesh);
 					} else {
-						ExportStaticMeshKt.export(StaticMeshesKt.convertMesh((UStaticMesh) meshExport)).writeToDir(getExportDir(meshExport));
+						ExportStaticMeshKt.export(StaticMeshesKt.convertMesh((UStaticMesh) meshExport), false, false).writeToDir(getExportDir(meshExport));
 					}
 
 					if (config.bReadMaterials) {
@@ -188,11 +189,11 @@ public class Main {
 				FPackageIndex material = getProp(staticMeshExp, "BaseMaterial", FPackageIndex.class);
 				FPackageIndex[] overrideMaterials = getProp(export, "OverrideMaterials", FPackageIndex[].class);
 
-				for (FPackageIndex textureDataIdx : getProps(export.getBaseObject().getProperties(), "TextureData", FPackageIndex.class)) {
-					UExport texDataExp = provider.loadObject(textureDataIdx);
+				for (FPackageIndex textureDataIdx : getProps(((UObject) export).getProperties(), "TextureData", FPackageIndex.class)) {
+					UObject texDataExp = (UObject) provider.loadObject(textureDataIdx);
 
 					if (texDataExp != null) {
-						BuildingTextureData td = StructFallbackReflectionUtilKt.mapToClass(texDataExp.getBaseObject(), BuildingTextureData.class, null);
+						BuildingTextureData td = StructFallbackReflectionUtilKt.mapToClass(texDataExp, BuildingTextureData.class);
 						JsonArray textures = new JsonArray();
 						addToArray(textures, td.Diffuse);
 						addToArray(textures, td.Normal);
@@ -317,7 +318,7 @@ public class Main {
 		String pkgPath = MyFileProvider.compactFilePath(index.getOwner().getName());
 		pkgPath = StringsKt.substringBeforeLast(pkgPath, '.', pkgPath);
 		pkgPath = i > 0 ? pkgPath : index.getOuterImportObject().getObjectName().getText();
-		String objectName = (i > 0 ? index.getExportObject().getObjectName() : index.getImportObject().getObjectName()).getText();
+		String objectName = index.getResource().getObjectName().getText();
 		return StringsKt.substringAfterLast(pkgPath, '/', pkgPath).equals(objectName) ? pkgPath : pkgPath + '/' + objectName;
 	}
 

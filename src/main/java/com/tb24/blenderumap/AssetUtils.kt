@@ -9,7 +9,7 @@ import java.util.*
 fun <T> getProp(properties: List<FPropertyTag>, name: String, clazz: Class<T>): T? {
 	for (prop in properties) {
 		if (name == prop.name.text) {
-			return prop.getTagTypeValue(clazz, null) as T?
+			return prop.getTagTypeValue(clazz) as T?
 		}
 	}
 	return null
@@ -26,12 +26,12 @@ fun <T> getProps(properties: List<FPropertyTag>, name: String, clazz: Class<T>):
 	}
 	val out = java.lang.reflect.Array.newInstance(clazz, maxIndex + 1) as Array<T?>
 	for (prop in collected) {
-		out[prop.arrayIndex] = prop.getTagTypeValue(clazz, null) as T?
+		out[prop.arrayIndex] = prop.getTagTypeValue(clazz) as T?
 	}
 	return out
 }
 
-fun <T> UExport.getProp(name: String, clazz: Class<T>) = baseObject.getProp(name, clazz)
+fun <T> UExport.getProp(name: String, clazz: Class<T>) = (this as UObject).getProp(name, clazz)
 fun <T> UObject.getProp(name: String, clazz: Class<T>) = getProp(properties, name, clazz)
 inline fun <reified T> UExport.get(name: String): T? = getProp(name, T::class.java)
 inline fun <reified T> UObject.get(name: String): T? = getProp(name, T::class.java)

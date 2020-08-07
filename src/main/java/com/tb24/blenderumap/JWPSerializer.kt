@@ -6,6 +6,7 @@ package com.tb24.blenderumap
 import com.google.gson.*
 import me.fungames.jfortniteparse.ue4.assets.exports.UDataTable
 import me.fungames.jfortniteparse.ue4.assets.exports.UExport
+import me.fungames.jfortniteparse.ue4.assets.exports.UObject
 import me.fungames.jfortniteparse.ue4.assets.objects.*
 import me.fungames.jfortniteparse.ue4.objects.core.i18n.FText
 import me.fungames.jfortniteparse.ue4.objects.core.i18n.FTextHistory
@@ -145,9 +146,10 @@ object JWPSerializer {
 			val obj = JsonObject()
 			if (sUseNonstandardFormat && src.export != null) obj.addProperty("object_name", src.export!!.objectName.text)
 			obj.addProperty("export_type", src.exportType)
+			if (src !is UObject) return obj
 
 			if (src !is UDataTable || sUseNonstandardFormat)
-				serializeProperties(obj, src.baseObject.properties, context)
+				serializeProperties(obj, src.properties, context)
 
 			if (src is UDataTable) {
 				if (sUseNonstandardFormat) {

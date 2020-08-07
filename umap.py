@@ -2,12 +2,13 @@
 BlenderUmap v0.3.1
 (C) amrsatrio. All rights reserved.
 """
-import bpy
 import json
 import os
 import time
-from io_import_scene_unreal_psa_psk_280 import pskimport
 from math import *
+
+import bpy
+from io_import_scene_unreal_psa_psk_280 import pskimport
 
 # Change to the working directory of the Java program with the bat. I'm leaving mine here.
 data_dir = r"C:\Users\satri\Documents\AppProjects\BlenderUmap\run"
@@ -28,7 +29,7 @@ def import_umap(processed_map_path: str,
 
     map_collection = bpy.data.collections.new(map_name)
     map_collection_inst = place_map(map_collection, into_collection)
-    map_scene = bpy.data.scenes.get(map_collection.name, bpy.data.scenes.new(map_collection.name))
+    map_scene = bpy.data.scenes.get(map_collection.name) or bpy.data.scenes.new(map_collection.name)
     map_scene.collection.children.link(map_collection)
     map_layer_collection = map_scene.view_layers[0].layer_collection.children[map_collection.name]
 
