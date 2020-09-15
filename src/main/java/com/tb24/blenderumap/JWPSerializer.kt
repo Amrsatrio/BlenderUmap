@@ -122,7 +122,7 @@ object JWPSerializer {
 					addProperty("string", h.text)
 					when (h) {
 						is FTextHistory.Base -> {
-							addProperty("namespace", h.nameSpace)
+							addProperty("namespace", h.namespace)
 							addProperty("key", h.key)
 						}
 						is FTextHistory.StringTableEntry -> {

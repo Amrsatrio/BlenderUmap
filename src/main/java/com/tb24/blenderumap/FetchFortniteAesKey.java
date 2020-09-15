@@ -23,6 +23,7 @@ public class FetchFortniteAesKey {
 	public static void main(String[] args) {
 		try {
 			Reader reader = new OkHttpClient().newCall(new Request.Builder().url("https://benbotfn.tk/api/v1/aes").build()).execute().body().charStream();
+			System.out.println("Fetched, writing...");
 			AesResponse response = GSON.fromJson(reader, AesResponse.class);
 			reader.close();
 			File configFile = new File("config.json");
@@ -50,6 +51,8 @@ public class FetchFortniteAesKey {
 			FileWriter fileWriter = new FileWriter(configFile);
 			GSON.toJson(configTree, fileWriter);
 			fileWriter.close();
+			System.out.println("Done");
+			System.exit(0);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}

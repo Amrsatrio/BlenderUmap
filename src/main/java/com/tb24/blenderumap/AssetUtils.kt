@@ -4,12 +4,12 @@ import me.fungames.jfortniteparse.ue4.assets.exports.UExport
 import me.fungames.jfortniteparse.ue4.assets.exports.UObject
 import me.fungames.jfortniteparse.ue4.assets.objects.FPropertyTag
 import me.fungames.jfortniteparse.ue4.objects.core.misc.FGuid
-import java.util.*
+import kotlin.math.max
 
 fun <T> getProp(properties: List<FPropertyTag>, name: String, clazz: Class<T>): T? {
 	for (prop in properties) {
 		if (name == prop.name.text) {
-			return prop.getTagTypeValue(clazz) as T?
+			return prop.getTagTypeValue(clazz)
 		}
 	}
 	return null
@@ -21,12 +21,12 @@ fun <T> getProps(properties: List<FPropertyTag>, name: String, clazz: Class<T>):
 	for (prop in properties) {
 		if (prop.name.text == name) {
 			collected.add(prop)
-			maxIndex = Math.max(maxIndex, prop.arrayIndex)
+			maxIndex = max(maxIndex, prop.arrayIndex)
 		}
 	}
 	val out = java.lang.reflect.Array.newInstance(clazz, maxIndex + 1) as Array<T?>
 	for (prop in collected) {
-		out[prop.arrayIndex] = prop.getTagTypeValue(clazz) as T?
+		out[prop.arrayIndex] = prop.getTagTypeValue(clazz)
 	}
 	return out
 }
