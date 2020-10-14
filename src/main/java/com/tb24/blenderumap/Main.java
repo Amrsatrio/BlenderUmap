@@ -69,6 +69,8 @@ public class Main {
 				return;
 			}
 
+			LOGGER.info("Reading config file " + configFile.getAbsolutePath());
+
 			try (FileReader reader = new FileReader(configFile)) {
 				config = GSON.fromJson(reader, Config.class);
 			}
@@ -441,34 +443,34 @@ public class Main {
 			}
 
 			FPackageIndex[][] textures = { // d n s e a
-					{
-							textureMap.getOrDefault("Trunk_BaseColor", textureMap.getOrDefault("Diffuse", textureMap.get("DiffuseTexture"))),
-							textureMap.getOrDefault("Trunk_Normal", textureMap.get("Normals")),
-							textureMap.getOrDefault("Trunk_Specular", textureMap.get("SpecularMasks")),
-							textureMap.get("EmissiveTexture"),
-							textureMap.get("MaskTexture")
-					},
-					{
-							textureMap.get("Diffuse_Texture_3"),
-							textureMap.get("Normals_Texture_3"),
-							textureMap.get("SpecularMasks_3"),
-							textureMap.get("EmissiveTexture_3"),
-							textureMap.get("MaskTexture_3")
-					},
-					{
-							textureMap.get("Diffuse_Texture_4"),
-							textureMap.get("Normals_Texture_4"),
-							textureMap.get("SpecularMasks_4"),
-							textureMap.get("EmissiveTexture_4"),
-							textureMap.get("MaskTexture_4")
-					},
-					{
-							textureMap.get("Diffuse_Texture_2"),
-							textureMap.get("Normals_Texture_2"),
-							textureMap.get("SpecularMasks_2"),
-							textureMap.get("EmissiveTexture_2"),
-							textureMap.get("MaskTexture_2")
-					}
+				{
+					textureMap.getOrDefault("Trunk_BaseColor", textureMap.getOrDefault("Diffuse", textureMap.get("DiffuseTexture"))),
+					textureMap.getOrDefault("Trunk_Normal", textureMap.get("Normals")),
+					textureMap.getOrDefault("Trunk_Specular", textureMap.get("SpecularMasks")),
+					textureMap.get("EmissiveTexture"),
+					textureMap.get("MaskTexture")
+				},
+				{
+					textureMap.get("Diffuse_Texture_3"),
+					textureMap.get("Normals_Texture_3"),
+					textureMap.get("SpecularMasks_3"),
+					textureMap.get("EmissiveTexture_3"),
+					textureMap.get("MaskTexture_3")
+				},
+				{
+					textureMap.get("Diffuse_Texture_4"),
+					textureMap.get("Normals_Texture_4"),
+					textureMap.get("SpecularMasks_4"),
+					textureMap.get("EmissiveTexture_4"),
+					textureMap.get("MaskTexture_4")
+				},
+				{
+					textureMap.get("Diffuse_Texture_2"),
+					textureMap.get("Normals_Texture_2"),
+					textureMap.get("SpecularMasks_2"),
+					textureMap.get("EmissiveTexture_2"),
+					textureMap.get("MaskTexture_2")
+				}
 			};
 
 			JsonArray array = new JsonArray(textures.length);
