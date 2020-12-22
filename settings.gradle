@@ -1,5 +1,1 @@
-includeBuild('../JFortniteParse') {
-	dependencySubstitution {
-		substitute module('me.fungames:JFortniteParse') with project(':')
-	}
-}
+includeBuild('../JFortniteParse')

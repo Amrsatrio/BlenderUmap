@@ -3,6 +3,7 @@
  */
 package com.tb24.blenderumap;
 
+import com.google.gson.FieldNamingPolicy;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -27,13 +28,21 @@ import java.util.UUID;
 
 import javax.imageio.ImageIO;
 
+import kotlin.Lazy;
 import kotlin.text.StringsKt;
+import me.fungames.jfortniteparse.fort.exports.BuildingTextureData;
+import me.fungames.jfortniteparse.fort.exports.actors.BuildingSMActor;
 import me.fungames.jfortniteparse.ue4.assets.Package;
-import me.fungames.jfortniteparse.ue4.assets.exports.UExport;
 import me.fungames.jfortniteparse.ue4.assets.exports.UObject;
 import me.fungames.jfortniteparse.ue4.assets.exports.UStaticMesh;
+import me.fungames.jfortniteparse.ue4.assets.exports.UStruct;
+import me.fungames.jfortniteparse.ue4.assets.exports.components.UStaticMeshComponent;
+import me.fungames.jfortniteparse.ue4.assets.exports.mats.UMaterialInstance;
+import me.fungames.jfortniteparse.ue4.assets.exports.mats.UMaterialInstance.FTextureParameterValue;
+import me.fungames.jfortniteparse.ue4.assets.exports.mats.UMaterialInterface;
+import me.fungames.jfortniteparse.ue4.assets.exports.tex.UTexture;
 import me.fungames.jfortniteparse.ue4.assets.exports.tex.UTexture2D;
-import me.fungames.jfortniteparse.ue4.assets.objects.FStructFallback;
+import me.fungames.jfortniteparse.ue4.assets.objects.meshes.FStaticMaterial;
 import me.fungames.jfortniteparse.ue4.assets.util.StructFallbackReflectionUtilKt;
 import me.fungames.jfortniteparse.ue4.converters.meshes.StaticMeshesKt;
 import me.fungames.jfortniteparse.ue4.converters.meshes.psk.ExportStaticMeshKt;
@@ -42,23 +51,19 @@ import me.fungames.jfortniteparse.ue4.objects.core.math.FRotator;
 import me.fungames.jfortniteparse.ue4.objects.core.math.FVector;
 import me.fungames.jfortniteparse.ue4.objects.core.misc.FGuid;
 import me.fungames.jfortniteparse.ue4.objects.uobject.FName;
-import me.fungames.jfortniteparse.ue4.objects.uobject.FObjectExport;
-import me.fungames.jfortniteparse.ue4.objects.uobject.FPackageIndex;
 import me.fungames.jfortniteparse.ue4.objects.uobject.FSoftObjectPath;
 import me.fungames.jfortniteparse.ue4.versions.GameKt;
 import me.fungames.jfortniteparse.ue4.versions.Ue4Version;
 
-import static com.tb24.blenderumap.AssetUtilsKt.asString;
 import static com.tb24.blenderumap.AssetUtilsKt.getProp;
-import static com.tb24.blenderumap.AssetUtilsKt.getProps;
 import static com.tb24.blenderumap.JWPSerializer.GSON;
 
 public class Main {
 	private static final Logger LOGGER = LoggerFactory.getLogger("BlenderUmap");
 	private static Config config;
 	private static MyFileProvider provider;
-	private static Set<FPackageIndex> exportQueue = new HashSet<>();
-	private static long start = System.currentTimeMillis();
+	private static final Set<Lazy<? extends UObject>> exportQueue = new HashSet<>();
+	private static final long start = System.currentTimeMillis();
 
 	public static void main(String[] args) {
 		try {
@@ -72,7 +77,7 @@ public class Main {
 			LOGGER.info("Reading config file " + configFile.getAbsolutePath());
 
 			try (FileReader reader = new FileReader(configFile)) {
-				config = GSON.fromJson(reader, Config.class);
+				config = GSON.newBuilder().setFieldNamingStrategy(FieldNamingPolicy.IDENTITY).create().fromJson(reader, Config.class);
 			}
 
 			File paksDir = new File(config.PaksDirectory);
@@ -103,7 +108,11 @@ public class Main {
 
 			try (FileWriter writer = new FileWriter(file)) {
 //				GSON.toJson(components, writer);
-				GSON.toJson(MyFileProvider.compactFilePath(pkg.getName()), writer);
+				String pkgName = provider.compactFilePath(pkg.getName());
+				if (!pkgName.endsWith(".umap")) {
+					pkgName += ".umap";
+				}
+				GSON.toJson(pkgName, writer);
 			}
 
 			LOGGER.info(String.format("All done in %,.1f sec. In the Python script, replace the line with data_dir with this line below:\n\ndata_dir = r\"%s\"", (System.currentTimeMillis() - start) / 1000.0F, new File("").getAbsolutePath()));
@@ -118,42 +127,41 @@ public class Main {
 		}
 	}
 
-	private static Package exportAndProduceProcessed(String s) throws Exception {
+	private static Package exportAndProduceProcessed(String s) {
 		Package pkg = provider.loadGameFile(s);
 
-		if (pkg == null) {
+		/*if (!s.endsWith(".umap")) {
+			LOGGER.info("{} is not an .umap, won't try to export", s);
 			return null;
-		} else if (!s.endsWith(".umap")) {
-			LOGGER.info(s + " is not an .umap, won't try to export");
-			return null;
-		}
+		}*/
 
 		JsonArray comps = new JsonArray();
 
-		for (FObjectExport objectExport : pkg.getExportMap()) {
-			UExport export = objectExport.exportObject.getValue();
-			String exportType = export.getExportType();
-			if (exportType.equals("LODActor")) continue;
+		for (UObject object : pkg.getExports()) {
+			if (!(object instanceof BuildingSMActor)) {
+				continue;
+			}
+			BuildingSMActor actor = (BuildingSMActor) object;
 
-			UExport staticMeshExp = provider.loadObject(getProp(export, "StaticMeshComponent", FPackageIndex.class));
+			UStaticMeshComponent staticMeshExp = actor.StaticMeshComponent.getValue();
 			if (staticMeshExp == null) continue;
 
 			// identifiers
 			JsonArray comp = new JsonArray();
 			comps.add(comp);
-			FGuid guid = getProp(export, "MyGuid", FGuid.class);
-			comp.add(guid != null ? asString(guid) : UUID.randomUUID().toString().replace("-", ""));
-			comp.add(objectExport.getObjectName().getText());
+			FGuid guid = actor.MyGuid;
+			comp.add(guid != null ? guid.toString() : UUID.randomUUID().toString().replace("-", ""));
+			comp.add(actor.getName());
 
 			// region mesh
-			FPackageIndex mesh = getProp(staticMeshExp, "StaticMesh", FPackageIndex.class);
+			Lazy<UStaticMesh> mesh = staticMeshExp.StaticMesh;
 
-			if (mesh == null || mesh.getIndex() == 0) { // read the actor class to find the mesh
-				UExport actorBlueprint = provider.loadObject(objectExport.getClassIndex());
+			if (mesh == null) { // read the actor class to find the mesh
+				UStruct actorBlueprint = actor.getClazz();
 
 				if (actorBlueprint != null) {
-					for (UExport actorExp : actorBlueprint.getOwner().getExports()) {
-						if (actorExp.getExportType().endsWith("StaticMeshComponent") && (mesh = getProp(actorExp, "StaticMesh", FPackageIndex.class)) != null && mesh.getIndex() != 0) {
+					for (UObject actorExp : actorBlueprint.getOwner().getExports()) {
+						if (actorExp instanceof UStaticMeshComponent && (mesh = ((UStaticMeshComponent) actorExp).StaticMesh) != null) {
 							break;
 						}
 					}
@@ -165,22 +173,22 @@ public class Main {
 			JsonArray textureDataArr = new JsonArray();
 			List<Mat> materials = new ArrayList<>();
 
-			if (mesh != null && mesh.getIndex() != 0) {
-				UExport meshExport = provider.loadObject(mesh);
+			if (mesh != null) {
+				UStaticMesh meshExport = mesh.getValue();
 
 				if (meshExport != null) {
 					if (config.bUseUModel) {
 						exportQueue.add(mesh);
 					} else {
-						ExportStaticMeshKt.export(StaticMeshesKt.convertMesh((UStaticMesh) meshExport), false, false).writeToDir(getExportDir(meshExport));
+						ExportStaticMeshKt.export(StaticMeshesKt.convertMesh(meshExport), false, false).writeToDir(getExportDir(meshExport));
 					}
 
 					if (config.bReadMaterials) {
-						FStructFallback[] staticMaterials = getProp(meshExport, "StaticMaterials", FStructFallback[].class);
+						List<FStaticMaterial> staticMaterials = meshExport.StaticMaterials;
 
 						if (staticMaterials != null) {
-							for (FStructFallback staticMaterial : staticMaterials) {
-								materials.add(new Mat(getProp(staticMaterial.getProperties(), "MaterialInterface", FPackageIndex.class)));
+							for (FStaticMaterial staticMaterial : staticMaterials) {
+								materials.add(new Mat(staticMaterial.materialInterface));
 							}
 						}
 					}
@@ -188,11 +196,12 @@ public class Main {
 			}
 
 			if (config.bReadMaterials) {
-				FPackageIndex material = getProp(staticMeshExp, "BaseMaterial", FPackageIndex.class);
-				FPackageIndex[] overrideMaterials = getProp(export, "OverrideMaterials", FPackageIndex[].class);
+				Lazy<UMaterialInterface> material = actor.BaseMaterial;
+				List<Lazy<UMaterialInterface>> overrideMaterials = staticMeshExp.OverrideMaterials;
+				Lazy<BuildingTextureData>[] textureDataArr_ = actor.TextureData != null ? actor.TextureData : new Lazy[0];
 
-				for (FPackageIndex textureDataIdx : getProps(((UObject) export).getProperties(), "TextureData", FPackageIndex.class)) {
-					UObject texDataExp = (UObject) provider.loadObject(textureDataIdx);
+				for (Lazy<BuildingTextureData> textureDataIdx : textureDataArr_) {
+					BuildingTextureData texDataExp = textureDataIdx != null ? textureDataIdx.getValue() : null;
 
 					if (texDataExp != null) {
 						BuildingTextureData td = StructFallbackReflectionUtilKt.mapToClass(texDataExp, BuildingTextureData.class);
@@ -200,14 +209,12 @@ public class Main {
 						addToArray(textures, td.Diffuse);
 						addToArray(textures, td.Normal);
 						addToArray(textures, td.Specular);
-						addToArray(textures, td.Emissive);
-						addToArray(textures, td.Mask);
 						JsonArray entry = new JsonArray();
 						entry.add(pkgIndexToDirPath(textureDataIdx));
 						entry.add(textures);
 						textureDataArr.add(entry);
 
-						if (td.OverrideMaterial != null && td.OverrideMaterial.getIndex() != 0) {
+						if (td.OverrideMaterial != null) {
 							material = td.OverrideMaterial;
 						}
 					} else {
@@ -219,7 +226,7 @@ public class Main {
 					Mat mat = materials.get(i);
 
 					if (material != null) {
-						mat.name = overrideMaterials != null && i < overrideMaterials.length && overrideMaterials[i].getIndex() != 0 ? overrideMaterials[i] : material;
+						mat.name = overrideMaterials != null && i < overrideMaterials.size() && overrideMaterials.get(i) != null ? overrideMaterials.get(i) : material;
 					}
 
 					mat.populateTextures();
@@ -229,13 +236,13 @@ public class Main {
 
 			// region additional worlds
 			JsonArray children = new JsonArray();
-			FSoftObjectPath[] additionalWorlds = getProp(export, "AdditionalWorlds", FSoftObjectPath[].class);
+			FSoftObjectPath[] additionalWorlds = getProp(actor, "AdditionalWorlds", FSoftObjectPath[].class);
 
 			if (additionalWorlds != null) {
 				for (FSoftObjectPath additionalWorld : additionalWorlds) {
 					String text = additionalWorld.getAssetPathName().getText();
 					Package cpkg = exportAndProduceProcessed(StringsKt.substringBeforeLast(text, '.', text) + ".umap");
-					children.add(cpkg != null ? MyFileProvider.compactFilePath(cpkg.getName()) : null);
+					children.add(cpkg != null ? provider.compactFilePath(cpkg.getName()) : null);
 				}
 			}
 			// endregion
@@ -243,15 +250,19 @@ public class Main {
 			comp.add(pkgIndexToDirPath(mesh));
 			comp.add(matsObj);
 			comp.add(textureDataArr);
-			comp.add(vector(getProp(staticMeshExp, "RelativeLocation", FVector.class)));
-			comp.add(rotator(getProp(staticMeshExp, "RelativeRotation", FRotator.class)));
-			comp.add(vector(getProp(staticMeshExp, "RelativeScale3D", FVector.class)));
+			comp.add(vector(staticMeshExp.RelativeLocation));
+			comp.add(rotator(staticMeshExp.RelativeRotation));
+			comp.add(vector(staticMeshExp.RelativeScale3D));
 			comp.add(children);
 		}
 
-		File file = new File(MyFileProvider.JSONS_FOLDER, MyFileProvider.compactFilePath(pkg.getName()) + ".processed.json");
+		String pkgName = provider.compactFilePath(pkg.getName());
+		if (!pkgName.endsWith(".umap")) {
+			pkgName += ".umap";
+		}
+		File file = new File(MyFileProvider.JSONS_FOLDER, pkgName + ".processed.json");
 		file.getParentFile().mkdirs();
-		LOGGER.info("Writing to " + file.getAbsolutePath());
+		LOGGER.info("Writing to {}", file.getAbsolutePath());
 
 		try (FileWriter writer = new FileWriter(file)) {
 			GSON.toJson(comps, writer);
@@ -262,8 +273,8 @@ public class Main {
 		return pkg;
 	}
 
-	private static void addToArray(JsonArray array, FPackageIndex index) {
-		if (index != null && index.getIndex() != 0) {
+	private static void addToArray(JsonArray array, Lazy<? extends UTexture> index) {
+		if (index != null) {
 			exportTexture(index);
 			array.add(pkgIndexToDirPath(index));
 		} else {
@@ -271,29 +282,29 @@ public class Main {
 		}
 	}
 
-	private static void exportTexture(FPackageIndex index) {
+	private static void exportTexture(Lazy<? extends UTexture> index) {
 		if (config.bUseUModel) {
 			exportQueue.add(index);
 			return;
 		}
 
 		try {
-			UTexture2D texExport = (UTexture2D) provider.loadObject(index);
+			UTexture texExport = index.getValue();
 			File output = new File(getExportDir(texExport), texExport.getName() + ".png");
 
 			if (output.exists()) {
-				LOGGER.debug("Texture already exists, skipping: " + output.getAbsolutePath());
+				LOGGER.debug("Texture already exists, skipping: {}", output.getAbsolutePath());
 			} else {
-				LOGGER.info("Saving texture to " + output.getAbsolutePath());
-				ImageIO.write(TexturesKt.toBufferedImage(texExport), "png", output);
+				LOGGER.info("Saving texture to {}", output.getAbsolutePath());
+				ImageIO.write(TexturesKt.toBufferedImage((UTexture2D) texExport), "png", output);
 			}
-		} catch (IOException e) {
+		} catch (Exception e) {
 			LOGGER.warn("Failed to save texture", e);
 		}
 	}
 
-	public static File getExportDir(UExport exportObj) {
-		String pkgPath = MyFileProvider.compactFilePath(exportObj.getOwner().getName());
+	public static File getExportDir(UObject exportObj) {
+		String pkgPath = provider.compactFilePath(exportObj.getOwner().getName());
 		pkgPath = StringsKt.substringBeforeLast(pkgPath, '.', pkgPath);
 
 		if (pkgPath.startsWith("/")) {
@@ -311,16 +322,19 @@ public class Main {
 		return outputDir;
 	}
 
-	public static String pkgIndexToDirPath(FPackageIndex index) {
+	public static String pkgIndexToDirPath(Lazy<? extends UObject> index) {
 		if (index == null) return null;
 
-		int i = index.getIndex();
-		if (i == 0) return null;
-
-		String pkgPath = MyFileProvider.compactFilePath(index.getOwner().getName());
+		UObject object;
+		try {
+			object = index.getValue();
+		} catch (Exception e) {
+			LOGGER.warn("Failed to load object", e);
+			return null;
+		}
+		String pkgPath = provider.compactFilePath(object.getOwner().getName());
 		pkgPath = StringsKt.substringBeforeLast(pkgPath, '.', pkgPath);
-		pkgPath = i > 0 ? pkgPath : index.getOuterImportObject().getObjectName().getText();
-		String objectName = index.getResource().getObjectName().getText();
+		String objectName = object.getName();
 		return StringsKt.substringAfterLast(pkgPath, '/', pkgPath).equals(objectName) ? pkgPath : pkgPath + '/' + objectName;
 	}
 
@@ -341,12 +355,12 @@ public class Main {
 
 			boolean bFirst = true;
 
-			for (FPackageIndex export : exportQueue) {
-				int i = export.getIndex();
-				if (i == 0) continue;
+			for (Lazy<? extends UObject> export : exportQueue) {
+				if (export == null) continue;
 
-				String packagePath = i > 0 ? MyFileProvider.compactFilePath(export.getOwner().getName()) : export.getOuterImportObject().getObjectName().getText();
-				String objectName = (i > 0 ? export.getExportObject().getObjectName() : export.getImportObject().getObjectName()).getText();
+				UObject object = export.getValue();
+				String packagePath = provider.compactFilePath(object.getOwner().getName());
+				String objectName = object.getName();
 
 				if (bFirst) {
 					bFirst = false;
@@ -396,10 +410,10 @@ public class Main {
 	}
 
 	private static class Mat {
-		public FPackageIndex name;
-		public Map<String, FPackageIndex> textureMap = new HashMap<>();
+		public Lazy<? extends UMaterialInterface> name;
+		public Map<String, Lazy<UTexture>> textureMap = new HashMap<>();
 
-		public Mat(FPackageIndex name) {
+		public Mat(Lazy<? extends UMaterialInterface> name) {
 			this.name = name;
 		}
 
@@ -407,42 +421,41 @@ public class Main {
 			populateTextures(name);
 		}
 
-		public void populateTextures(FPackageIndex pkgIndex) {
-			if (pkgIndex.getIndex() == 0) return;
+		public void populateTextures(Lazy<? extends UMaterialInterface> pkgIndex) {
+			if (pkgIndex == null) return;
 
-			UExport material = provider.loadObject(pkgIndex);
-			if (material == null) return;
+			UObject object = pkgIndex.getValue();
+			if (!(object instanceof UMaterialInstance)) return;
+			UMaterialInstance material = (UMaterialInstance) object;
 
-			FStructFallback[] textureParameterValues = getProp(material, "TextureParameterValues", FStructFallback[].class);
+			List<FTextureParameterValue> textureParameterValues = material.TextureParameterValues;
 
 			if (textureParameterValues != null) {
-				for (FStructFallback textureParameterValue : textureParameterValues) {
-					FName name = getProp(getProp(textureParameterValue.getProperties(), "ParameterInfo", FStructFallback.class).getProperties(), "Name", FName.class);
+				for (FTextureParameterValue textureParameterValue : textureParameterValues) {
+					FName name = textureParameterValue.ParameterInfo.Name;
 
 					if (name != null) {
-						FPackageIndex parameterValue = getProp(textureParameterValue.getProperties(), "ParameterValue", FPackageIndex.class);
+						Lazy<UTexture> parameterValue = textureParameterValue.ParameterValue;
 
-						if (parameterValue != null && parameterValue.getIndex() != 0 && !textureMap.containsKey(name.getText())) {
+						if (parameterValue != null && !textureMap.containsKey(name.getText())) {
 							textureMap.put(name.getText(), parameterValue);
 						}
 					}
 				}
 			}
 
-			FPackageIndex parent = getProp(material, "Parent", FPackageIndex.class);
-
-			if (parent != null && parent.getIndex() != 0) {
-				populateTextures(parent);
+			if (material.Parent != null) {
+				populateTextures(material.Parent);
 			}
 		}
 
 		public void addToObj(JsonObject obj) {
-			if (name.getIndex() == 0) {
+			if (name == null) {
 				obj.add(Integer.toHexString(hashCode()), null);
 				return;
 			}
 
-			FPackageIndex[][] textures = { // d n s e a
+			Lazy[][] textures = { // d n s e a
 				{
 					textureMap.getOrDefault("Trunk_BaseColor", textureMap.getOrDefault("Diffuse", textureMap.get("DiffuseTexture"))),
 					textureMap.getOrDefault("Trunk_Normal", textureMap.get("Normals")),
@@ -475,13 +488,13 @@ public class Main {
 
 			JsonArray array = new JsonArray(textures.length);
 
-			for (FPackageIndex[] texture : textures) {
+			for (Lazy[] texture : textures) {
 				boolean empty = true;
 
-				for (FPackageIndex index : texture) {
-					empty &= index == null || index.getIndex() == 0;
+				for (Lazy<UTexture> index : texture) {
+					empty &= index == null;
 
-					if (index != null && index.getIndex() != 0) {
+					if (index != null) {
 						exportTexture(index);
 					}
 				}
@@ -489,7 +502,7 @@ public class Main {
 				JsonArray subArray = new JsonArray(texture.length);
 
 				if (!empty) {
-					for (FPackageIndex index : texture) {
+					for (Lazy<UTexture> index : texture) {
 						subArray.add(pkgIndexToDirPath(index));
 					}
 				}
@@ -499,17 +512,6 @@ public class Main {
 
 			obj.add(pkgIndexToDirPath(name), array);
 		}
-	}
-
-	private static class BuildingTextureData {
-		public FPackageIndex Diffuse;
-		public FPackageIndex Normal;
-		public FPackageIndex Specular;
-		public FPackageIndex Emissive;
-		public FPackageIndex Mask;
-		public FPackageIndex OverrideMaterial;
-		// public EFortResourceType ResourceType;
-		// public Float ResourceCost;
 	}
 
 	public static class Config {
