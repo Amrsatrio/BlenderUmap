@@ -29,21 +29,25 @@ import java.util.UUID;
 import javax.imageio.ImageIO;
 
 import kotlin.Lazy;
+import kotlin.io.FilesKt;
 import kotlin.text.StringsKt;
 import me.fungames.jfortniteparse.fort.exports.BuildingTextureData;
-import me.fungames.jfortniteparse.fort.exports.actors.BuildingSMActor;
 import me.fungames.jfortniteparse.ue4.assets.Package;
+import me.fungames.jfortniteparse.ue4.assets.exports.UBlueprintGeneratedClass;
+import me.fungames.jfortniteparse.ue4.assets.exports.ULevel;
 import me.fungames.jfortniteparse.ue4.assets.exports.UObject;
 import me.fungames.jfortniteparse.ue4.assets.exports.UStaticMesh;
 import me.fungames.jfortniteparse.ue4.assets.exports.UStruct;
-import me.fungames.jfortniteparse.ue4.assets.exports.components.UStaticMeshComponent;
+import me.fungames.jfortniteparse.ue4.assets.exports.UWorld;
 import me.fungames.jfortniteparse.ue4.assets.exports.mats.UMaterialInstance;
 import me.fungames.jfortniteparse.ue4.assets.exports.mats.UMaterialInstance.FTextureParameterValue;
 import me.fungames.jfortniteparse.ue4.assets.exports.mats.UMaterialInterface;
+import me.fungames.jfortniteparse.ue4.assets.exports.tex.FTexturePlatformData;
 import me.fungames.jfortniteparse.ue4.assets.exports.tex.UTexture;
 import me.fungames.jfortniteparse.ue4.assets.exports.tex.UTexture2D;
+import me.fungames.jfortniteparse.ue4.assets.mappings.TypeMappingsProvider;
+import me.fungames.jfortniteparse.ue4.assets.mappings.UsmapTypeMappingsProvider;
 import me.fungames.jfortniteparse.ue4.assets.objects.meshes.FStaticMaterial;
-import me.fungames.jfortniteparse.ue4.assets.util.StructFallbackReflectionUtilKt;
 import me.fungames.jfortniteparse.ue4.converters.meshes.StaticMeshesKt;
 import me.fungames.jfortniteparse.ue4.converters.meshes.psk.ExportStaticMeshKt;
 import me.fungames.jfortniteparse.ue4.converters.textures.TexturesKt;
@@ -56,8 +60,10 @@ import me.fungames.jfortniteparse.ue4.versions.GameKt;
 import me.fungames.jfortniteparse.ue4.versions.Ue4Version;
 
 import static com.tb24.blenderumap.AssetUtilsKt.getProp;
+import static com.tb24.blenderumap.AssetUtilsKt.getProps;
 import static com.tb24.blenderumap.JWPSerializer.GSON;
 
+@SuppressWarnings("unchecked")
 public class Main {
 	private static final Logger LOGGER = LoggerFactory.getLogger("BlenderUmap");
 	private static Config config;
@@ -95,6 +101,12 @@ public class Main {
 			}
 
 			provider = new MyFileProvider(paksDir, config.UEVersion, config.EncryptionKeys, config.bDumpAssets);
+			File newestUsmap = getNewestUsmap("mappings");
+			if (newestUsmap != null) {
+				TypeMappingsProvider usmap = new UsmapTypeMappingsProvider(newestUsmap);
+				usmap.reload();
+				provider.setMappingsProvider(usmap);
+			}
 
 			Package pkg = exportAndProduceProcessed(config.ExportPackage);
 			if (pkg == null) return;
@@ -127,41 +139,67 @@ public class Main {
 		}
 	}
 
-	private static Package exportAndProduceProcessed(String s) {
-		Package pkg = provider.loadGameFile(s);
+	public static File getNewestUsmap(String directoryFilePath) {
+		File directory = new File(directoryFilePath);
+		File[] files = directory.listFiles();
+		long lastModifiedTime = Long.MIN_VALUE;
+		File chosenFile = null;
 
-		/*if (!s.endsWith(".umap")) {
-			LOGGER.info("{} is not an .umap, won't try to export", s);
+		if (files != null) {
+			for (File file : files) {
+				if (file.isFile() && file.getName().endsWith(".usmap") && file.lastModified() > lastModifiedTime) {
+					chosenFile = file;
+					lastModifiedTime = file.lastModified();
+				}
+			}
+		}
+
+		return chosenFile;
+	}
+
+	private static Package exportAndProduceProcessed(String path) {
+		if (path.endsWith(".umap") && provider.mountedIoStoreReaders().size() > 0) {
+			path = path.substring(0, path.lastIndexOf('.'));
+		}
+		UObject mainObject = provider.loadObject(path);
+		if (mainObject == null) {
+			LOGGER.info("Object not found");
 			return null;
-		}*/
-
+		}
+		if (!(mainObject instanceof UWorld)) {
+			LOGGER.info(mainObject.getPathName() + " is not a UWorld, won't try to export");
+			return null;
+		}
+		UWorld world = (UWorld) mainObject;
+		ULevel persistentLevel = world.getPersistentLevel().getValue();
 		JsonArray comps = new JsonArray();
 
-		for (UObject object : pkg.getExports()) {
-			if (!(object instanceof BuildingSMActor)) {
-				continue;
-			}
-			BuildingSMActor actor = (BuildingSMActor) object;
+		for (Lazy<UObject> actorLazy : persistentLevel.getActors()) {
+			if (actorLazy == null) continue;
+			UObject actor = actorLazy.getValue();
+			if (actor.getExportType().equals("LODActor")) continue;
 
-			UStaticMeshComponent staticMeshExp = actor.StaticMeshComponent.getValue();
+			Lazy<UObject> staticMeshExpLazy = getProp(actor, "StaticMeshComponent", Lazy.class); // /Script/Engine.StaticMeshActor:StaticMeshComponent or /Script/FortniteGame.BuildingSMActor:StaticMeshComponent
+			if (staticMeshExpLazy == null) continue;
+			UObject staticMeshExp = staticMeshExpLazy.getValue();
 			if (staticMeshExp == null) continue;
 
 			// identifiers
 			JsonArray comp = new JsonArray();
 			comps.add(comp);
-			FGuid guid = actor.MyGuid;
-			comp.add(guid != null ? guid.toString() : UUID.randomUUID().toString().replace("-", ""));
+			FGuid guid = getProp(actor, "MyGuid", FGuid.class); // /Script/FortniteGame.BuildingActor:MyGuid
+			comp.add(guid != null ? guid.toString().toLowerCase() : UUID.randomUUID().toString().replace("-", ""));
 			comp.add(actor.getName());
 
 			// region mesh
-			Lazy<UStaticMesh> mesh = staticMeshExp.StaticMesh;
+			Lazy<UStaticMesh> mesh = getProp(staticMeshExp, "StaticMesh", Lazy.class); // /Script/Engine.StaticMeshComponent:StaticMesh
 
 			if (mesh == null) { // read the actor class to find the mesh
 				UStruct actorBlueprint = actor.getClazz();
 
-				if (actorBlueprint != null) {
+				if (actorBlueprint instanceof UBlueprintGeneratedClass) {
 					for (UObject actorExp : actorBlueprint.getOwner().getExports()) {
-						if (actorExp instanceof UStaticMeshComponent && (mesh = ((UStaticMeshComponent) actorExp).StaticMesh) != null) {
+						if ((mesh = getProp(actorExp, "StaticMesh", Lazy.class)) != null) {
 							break;
 						}
 					}
@@ -195,16 +233,14 @@ public class Main {
 				}
 			}
 
-			if (config.bReadMaterials) {
-				Lazy<UMaterialInterface> material = actor.BaseMaterial;
-				List<Lazy<UMaterialInterface>> overrideMaterials = staticMeshExp.OverrideMaterials;
-				Lazy<BuildingTextureData>[] textureDataArr_ = actor.TextureData != null ? actor.TextureData : new Lazy[0];
+			if (config.bReadMaterials /*&& actor instanceof BuildingSMActor*/) {
+				Lazy<UMaterialInterface> material = getProp(actor, "BaseMaterial", Lazy.class); // /Script/FortniteGame.BuildingSMActor:BaseMaterial
+				List<Lazy<UMaterialInterface>> overrideMaterials = getProp(staticMeshExp, "OverrideMaterials", List.class); // /Script/Engine.MeshComponent:OverrideMaterials
 
-				for (Lazy<BuildingTextureData> textureDataIdx : textureDataArr_) {
-					BuildingTextureData texDataExp = textureDataIdx != null ? textureDataIdx.getValue() : null;
+				for (Lazy<BuildingTextureData> textureDataIdx : getProps(actor.getProperties(), "TextureData", Lazy.class)) { // /Script/FortniteGame.BuildingSMActor:TextureData
+					BuildingTextureData td = textureDataIdx != null ? textureDataIdx.getValue() : null;
 
-					if (texDataExp != null) {
-						BuildingTextureData td = StructFallbackReflectionUtilKt.mapToClass(texDataExp, BuildingTextureData.class);
+					if (td != null) {
 						JsonArray textures = new JsonArray();
 						addToArray(textures, td.Diffuse);
 						addToArray(textures, td.Normal);
@@ -236,7 +272,7 @@ public class Main {
 
 			// region additional worlds
 			JsonArray children = new JsonArray();
-			FSoftObjectPath[] additionalWorlds = getProp(actor, "AdditionalWorlds", FSoftObjectPath[].class);
+			List<FSoftObjectPath> additionalWorlds = getProp(actor, "AdditionalWorlds", List.class); // /Script/FortniteGame.BuildingFoundation:AdditionalWorlds
 
 			if (additionalWorlds != null) {
 				for (FSoftObjectPath additionalWorld : additionalWorlds) {
@@ -250,12 +286,13 @@ public class Main {
 			comp.add(pkgIndexToDirPath(mesh));
 			comp.add(matsObj);
 			comp.add(textureDataArr);
-			comp.add(vector(staticMeshExp.RelativeLocation));
-			comp.add(rotator(staticMeshExp.RelativeRotation));
-			comp.add(vector(staticMeshExp.RelativeScale3D));
+			comp.add(vector(getProp(staticMeshExp, "RelativeLocation", FVector.class))); // /Script/Engine.SceneComponent:RelativeLocation
+			comp.add(rotator(getProp(staticMeshExp, "RelativeRotation", FRotator.class))); // /Script/Engine.SceneComponent:RelativeRotation
+			comp.add(vector(getProp(staticMeshExp, "RelativeScale3D", FVector.class))); // /Script/Engine.SceneComponent:RelativeScale3D
 			comp.add(children);
 		}
 
+		Package pkg = world.getOwner();
 		String pkgName = provider.compactFilePath(pkg.getName());
 		if (!pkgName.endsWith(".umap")) {
 			pkgName += ".umap";
@@ -289,14 +326,24 @@ public class Main {
 		}
 
 		try {
-			UTexture texExport = index.getValue();
-			File output = new File(getExportDir(texExport), texExport.getName() + ".png");
+			UTexture2D texture = index.getValue() instanceof UTexture2D ? (UTexture2D) index.getValue() : null;
+			if (texture == null) {
+				return;
+			}
+			FTexturePlatformData platformData = texture.getFirstTexture();
+			char[] fourCC = TexturesKt.getDdsFourCC(platformData);
+			File output = new File(getExportDir(texture), texture.getName() + (fourCC != null ? ".dds" : ".png"));
 
 			if (output.exists()) {
 				LOGGER.debug("Texture already exists, skipping: {}", output.getAbsolutePath());
 			} else {
 				LOGGER.info("Saving texture to {}", output.getAbsolutePath());
-				ImageIO.write(TexturesKt.toBufferedImage((UTexture2D) texExport), "png", output);
+
+				if (fourCC != null) {
+					FilesKt.writeBytes(output, TexturesKt.toDdsArray(texture, platformData, platformData.getFirstLoadedMip()));
+				} else {
+					ImageIO.write(TexturesKt.toBufferedImage(texture, platformData, platformData.getFirstLoadedMip()), "png", output);
+				}
 			}
 		} catch (Exception e) {
 			LOGGER.warn("Failed to save texture", e);

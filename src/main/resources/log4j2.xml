@@ -1,16 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Configuration status="INFO">
+	<Properties>
+		<Property name="pattern">%c: %p: %m%n%throwable</Property>
+	</Properties>
 	<Appenders>
-		<Console name="console" target="SYSTEM_OUT">
-			<PatternLayout pattern="%c: %p: %m%n" />
+		<Console name="stdout" target="SYSTEM_OUT">
+			<PatternLayout disableAnsi="false" pattern="%highlight{${pattern}}{INFO=normal}" />
+			<ThresholdFilter level="ERROR" onMatch="DENY" onMismatch="ACCEPT"/>
+		</Console>
+		<Console name="stderr" target="SYSTEM_ERR">
+			<PatternLayout pattern="${pattern}" />
+			<ThresholdFilter level="ERROR" onMatch="ACCEPT" onMismatch="DENY"/>
 		</Console>
 		<File name="file" fileName="BlenderUmap.log" immediateFlush="true" append="false">
-			<PatternLayout pattern="[%d{yyyy.MM.dd-HH.mm.ss:SSS}{GMT}]%c: %p: %m%n" />
+			<PatternLayout pattern="[%d{yyyy.MM.dd-HH.mm.ss:SSS}{GMT}]${pattern}" />
 		</File>
 	</Appenders>
 	<Loggers>
 		<Root level="info">
-			<AppenderRef ref="console" />
+			<AppenderRef ref="stdout" />
+			<AppenderRef ref="stderr" />
 			<AppenderRef ref="file" />
 		</Root>
 	</Loggers>

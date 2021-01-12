@@ -14,7 +14,7 @@ fun <T> getProp(properties: List<FPropertyTag>, name: String, clazz: Class<T>): 
 }
 
 fun <T> getProps(properties: List<FPropertyTag>, name: String, clazz: Class<T>): Array<T?> {
-	val collected: MutableList<FPropertyTag> = ArrayList()
+	val collected = mutableListOf<FPropertyTag>()
 	var maxIndex = -1
 	for (prop in properties) {
 		if (prop.name.text == name) {

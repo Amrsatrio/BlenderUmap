@@ -5,7 +5,6 @@ package com.tb24.blenderumap
 
 import com.google.gson.*
 import me.fungames.jfortniteparse.ue4.assets.IoPackage
-import me.fungames.jfortniteparse.ue4.assets.IoPackage.*
 import me.fungames.jfortniteparse.ue4.assets.PakPackage
 import me.fungames.jfortniteparse.ue4.assets.UProperty
 import me.fungames.jfortniteparse.ue4.assets.exports.ECurveTableMode
@@ -17,6 +16,7 @@ import me.fungames.jfortniteparse.ue4.objects.core.i18n.FText
 import me.fungames.jfortniteparse.ue4.objects.core.i18n.FTextHistory
 import me.fungames.jfortniteparse.ue4.objects.core.math.FBox
 import me.fungames.jfortniteparse.ue4.objects.core.math.FBox2D
+import me.fungames.jfortniteparse.ue4.objects.core.math.FColor
 import me.fungames.jfortniteparse.ue4.objects.core.misc.FGuid
 import me.fungames.jfortniteparse.ue4.objects.gameplaytags.FGameplayTagContainer
 import me.fungames.jfortniteparse.ue4.objects.uobject.FName
@@ -46,7 +46,7 @@ object JWPSerializer {
 				?: separateCamelCase(it.name, "_").toLowerCase(Locale.ENGLISH)
 		}
 		.registerTypeAdapter(ByteArray::class.java, ByteArraySerializer())
-		.registerTypeAdapter(UByte::class.java, JsonSerializer<UByte> { src, typeOfSrc, context -> JsonPrimitive(src.toShort()) })
+		.registerTypeAdapter(UByte::class.java, JsonSerializer<UByte> { src, typeOfSrc, context -> JsonPrimitive(src.toString()) })
 		.registerTypeAdapter(UShort::class.java, JsonSerializer<UShort> { src, typeOfSrc, context -> JsonPrimitive(src.toInt()) })
 		.registerTypeAdapter(UInt::class.java, JsonSerializer<UInt> { src, typeOfSrc, context -> JsonPrimitive(src.toLong()) })
 		.registerTypeAdapter(ULong::class.java, JsonSerializer<ULong> { src, typeOfSrc, context -> JsonPrimitive(BigInteger(src.toString())) })
@@ -68,6 +68,14 @@ object JWPSerializer {
 				add("valid", context.serialize(src.isValid))
 			}
 		})
+		.registerTypeAdapter(FColor::class.java, JsonSerializer<FColor> { src, typeOfSrc, context ->
+			JsonObject().apply {
+				add("r", JsonPrimitive(src.r.toShort()))
+				add("g", JsonPrimitive(src.g.toShort()))
+				add("b", JsonPrimitive(src.b.toShort()))
+				add("a", JsonPrimitive(src.a.toShort()))
+			}
+		})
 		.registerTypeAdapter(FGameplayTagContainer::class.java, JsonSerializer<FGameplayTagContainer> { src, typeOfSrc, context ->
 			JsonObject().apply {
 				add("gameplay_tags", JsonArray().apply { src.gameplayTags.forEach { add(context.serialize(it)) } })
@@ -80,27 +88,23 @@ object JWPSerializer {
 		.registerTypeAdapter(FPackageIndex::class.java, JsonSerializer<FPackageIndex> { src, typeOfSrc, context ->
 			if (src.isImport()) {
 				val pkg = src.owner
-				if (pkg is PakPackage) {
-					JsonArray().apply {
+				JsonArray().apply {
+					if (pkg is PakPackage) {
 						var current = pkg.run { src.getResource() }
 						while (current != null) {
 							add(current.objectName.text)
 							current = pkg.run { current!!.outerIndex.getResource() }
 						}
-					}
-				} else {
-					when (val resolved = (pkg as IoPackage).resolveObjectIndex(pkg.importMap[src.toImport()])) {
-						is ResolvedScriptObject -> JsonArray().apply {
-							var current: ResolvedObject = resolved
-							do {
-								add(current.getName().text)
-							} while (current.getOuter()?.also { current = it } != null)
+					} else {
+						val initial = (pkg as IoPackage).resolveObjectIndex(pkg.importMap[src.toImport()])
+						var current = initial
+						while (current != null) {
+							add(current.getName().text)
+							current = current.getOuter()
 						}
-						is ResolvedExportObject -> JsonArray().apply {
-							add(resolved.getName().text)
-							add(resolved.pkg.fileName)
+						if (initial is IoPackage.ResolvedExportObject) {
+							add(initial.pkg.name)
 						}
-						else -> null
 					}
 				}
 			} else {
@@ -188,9 +192,10 @@ object JWPSerializer {
 			val obj = JsonObject()
 			//if (sUseNonstandardFormat && src.export != null) obj.addProperty("object_name", src.export!!.objectName.text)
 			obj.addProperty("export_type", src.exportType)
+			obj.addProperty("path_name", src.getPathName(src.owner))
 
 			if (src !is UDataTable || sUseNonstandardFormat)
-				serializeProperties(obj, (src as UObject).properties, context)
+				serializeProperties(obj, src.properties, context)
 
 			if (src is UDataTable) {
 				if (sUseNonstandardFormat) {
