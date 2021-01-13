@@ -569,10 +569,10 @@ public class Main {
 		public List<MyFileProvider.EncryptionKey> EncryptionKeys = Collections.emptyList();
 		public boolean bDumpAssets = false;
 		public int ObjectCacheSize = 100;
-		public boolean bReadMaterials = false;
+		public boolean bReadMaterials = true;
 		public boolean bExportToDDSWhenPossible = true;
 		public boolean bExportBuildingFoundations = true;
-		public boolean bUseUModel = true;
+		public boolean bUseUModel = false;
 		public String UModelAdditionalArgs = "";
 		public String ExportPackage;
 	}

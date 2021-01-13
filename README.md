@@ -1,5 +1,5 @@
 # BlenderUmap
-A Java tool to export Fortnite .umaps and a Python script to import it. More games will be supported as time goes on.
+A Java tool to export Fortnite .umaps and a Python script to import it.
 
 ## Usage
 * Before running the tool you need to have 64-bit Java installed. [Get it here. (choose 64-bit Offline)](https://www.java.com/en/download/manual.jsp)\
@@ -15,16 +15,36 @@ A Java tool to export Fortnite .umaps and a Python script to import it. More gam
 * Profit!
 
 ## config.json
-* **`PaksDirectory`: Path to the Paks folder.**
-* `UEVersion`: Unreal Engine version. Supports up to UE4.25.
+* **`PaksDirectory`: Path to the Paks folder.** Backslashes must be doubled like this: `\\`.
+* `UEVersion`: Unreal Engine version. Supports up to UE4.26.
 * **`EncryptionKeys`: List of AES keys to use for loading the paks**
   * `Guid`: Identify a pak by its encryption key GUID. Use `00000000000000000000000000000000` (32 0's) to refer to the main paks.
   * `FileName`: Alternatively, you can use this to identify a pak by its file name.
   * `Key`: The pak's encryption key, in either hex (starting with "0x") or base64.
-* `bReadMaterials`: Export materials. Materials are experimental! Not all imported materials will be perfect. **Min. 24GB of RAM recommended!**
-* `bRunUModel`: Run UModel within the exporting process to export meshes, materials, and textures.
-* `UModelAdditionalArgs`: Additional command line args when starting UModel.
+  
+  Example for main paks:
+  ```json
+  {
+    "Guid": "00000000000000000000000000000000",
+    "Key": "0x36983D73A17CAF253F9D1A322A79D6DC53D8E81B661B7564343F41D4835275D5"
+  }
+  ```
 * `bDumpAssets`: Save assets as JSON format, useful for debugging.
+* `ObjectCacheSize`: Configure the object loader cache size to tune the performance, or set to 0 to disable. Defaults to 100.
+* `bReadMaterials`: Export materials. Materials are experimental! Not all imported materials will be perfect. **Min. 24GB of RAM recommended!**
+* `bExportToDDSWhenPossible`: Prefer PNG over DDS? Set this to `false` and textures will always be exported as PNG. **Warning: Export times will significantly increase when this is set to `false`!** Defaults to enabled.
+* `bExportBuildingFoundations`: You can turn off exporting sub-buildings in large POIs if you want to quickly port the base POI structures, by setting this to `false`. Defaults to enabled.
+* `bUseUModel`: Run UModel within the exporting process to export meshes, materials, and textures.
+* `UModelAdditionalArgs`: Additional command line args when starting UModel.
 * **`ExportPackage`: The .umap you want to export.** Accepts these path formats:
-  * /Game/Maps/MapName.umap
-  * GameName/Content/Maps/MapName.umap
+  * `/Game/Maps/MapName.umap`
+  * `GameName/Content/Maps/MapName.umap` (file path)
+  
+  These are accepted for games with I/O store (.utoc and .ucas):
+  * `/Game/Maps/MapName` (package path)
+  * `/Game/Maps/MapName.MapName` (object path)
+  * `GameName/Content/Maps/MapName` (file path without extension)
+  
+  For assets in Fortnite game feature plugins:
+  * For example the full file path is `FortniteGame/Plugins/GameFeatures/GameFeatureName/Content/Maps/MapName.umap`
+  * You have to convert it into `/GameFeatureName/Maps/MapName` which is the package path that is supported by this tool.
