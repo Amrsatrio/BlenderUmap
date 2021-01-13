@@ -1,14 +1,13 @@
 """
-BlenderUmap v0.3.1
+BlenderUmap v0.4.1
 (C) amrsatrio. All rights reserved.
 """
+import bpy
 import json
 import os
 import time
-from math import *
-
-import bpy
 from io_import_scene_unreal_psa_psk_280 import pskimport
+from math import *
 
 # Change to the working directory of the Java program with the bat. I'm leaving mine here.
 data_dir = r"C:\Users\satri\Documents\AppProjects\BlenderUmap\run"
@@ -21,7 +20,7 @@ use_cube_as_fallback = True
 # ---------- END INPUTS, DO NOT MODIFY ANYTHING BELOW UNLESS YOU NEED TO ----------
 def import_umap(processed_map_path: str,
                 into_collection: bpy.types.Collection) -> bpy.types.Object:
-    map_name = processed_map_path[processed_map_path.rindex("/") + 1:processed_map_path.rindex(".")]
+    map_name = processed_map_path[processed_map_path.rindex("/") + 1:]
     map_collection = bpy.data.collections.get(map_name)
 
     if reuse_maps and map_collection:

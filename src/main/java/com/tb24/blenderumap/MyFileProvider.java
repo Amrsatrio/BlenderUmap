@@ -30,19 +30,23 @@ public class MyFileProvider extends DefaultFileProvider {
 	public static final File JSONS_FOLDER = new File("jsons");
 	private final boolean bDumpAssets;
 	private final Map<GameFile, Package> loaded = new HashMap<>();
-	private final LruCache<FPackageId, IoPackage> cache = new LruCache<FPackageId, IoPackage>(100) {
-		@Override
-		protected int sizeOf(@NotNull FPackageId key, @NotNull IoPackage value) {
-			return value.getExportsLazy().size();
-		}
-	};
+	private final LruCache<FPackageId, IoPackage> cache;
 
-	public MyFileProvider(File folder, Ue4Version game, Iterable<EncryptionKey> encryptionKeys, boolean bDumpAssets) {
+	public MyFileProvider(File folder, Ue4Version game, Iterable<EncryptionKey> encryptionKeys, boolean bDumpAssets, int cacheSize) {
 		super(folder, game);
 		this.bDumpAssets = bDumpAssets;
+		if (cacheSize > 0) {
+			cache = new LruCache<FPackageId, IoPackage>(cacheSize) {
+				@Override
+				protected int sizeOf(@NotNull FPackageId key, @NotNull IoPackage value) {
+					return value.getExportsLazy().size();
+				}
+			};
+		} else {
+			cache = null;
+		}
 
 		Map<FGuid, byte[]> keysToSubmit = new HashMap<>();
-
 		for (EncryptionKey entry : encryptionKeys) {
 			if (entry.FileName != null && !entry.FileName.isEmpty()) {
 				Optional<PakFileReader> foundGuid = getUnloadedPaks().stream().filter(it -> it.getFileName().equals(entry.FileName)).findFirst();
@@ -58,17 +62,6 @@ public class MyFileProvider extends DefaultFileProvider {
 		}
 
 		submitKeys(keysToSubmit);
-	}
-
-	@Override
-	public GameFile findGameFile(@NotNull String filePath) {
-		GameFile gameFile = super.findGameFile(filePath);
-
-		if (gameFile == null) {
-			//LOGGER.warn("File " + filePath + " not found");
-		}
-
-		return gameFile;
 	}
 
 	@Override
@@ -93,13 +86,16 @@ public class MyFileProvider extends DefaultFileProvider {
 		});
 	}
 
-	@NotNull
 	@Override
 	public IoPackage loadGameFile(@NotNull FPackageId packageId) {
+		if (cache == null) {
+			return super.loadGameFile(packageId);
+		}
 		synchronized (cache) {
 			IoPackage pkg = cache.get(packageId);
 			if (pkg == null) {
-				cache.put(packageId, pkg = super.loadGameFile(packageId));
+				pkg = super.loadGameFile(packageId);
+				if (pkg != null) cache.put(packageId, pkg);
 			}
 			return pkg;
 		}

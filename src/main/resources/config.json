@@ -3,9 +3,12 @@
   "PaksDirectory": "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks",
   "UEVersion": "GAME_UE4_LATEST",
   "EncryptionKeys": [],
-  "bReadMaterials": true,
-  "bUseUModel": true,
-  "UModelAdditionalArgs": "",
   "bDumpAssets": false,
+  "ObjectCacheSize": 100,
+  "bReadMaterials": true,
+  "bExportToDDSWhenPossible": true,
+  "bExportBuildingFoundations": true,
+  "bUseUModel": false,
+  "UModelAdditionalArgs": "",
   "ExportPackage": "/Game/Content/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_BoatRental.umap"
 }

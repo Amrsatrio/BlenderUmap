@@ -7,6 +7,7 @@ import com.google.gson.FieldNamingPolicy;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.reflect.TypeToken;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,6 +59,7 @@ import me.fungames.jfortniteparse.ue4.objects.uobject.FName;
 import me.fungames.jfortniteparse.ue4.objects.uobject.FSoftObjectPath;
 import me.fungames.jfortniteparse.ue4.versions.GameKt;
 import me.fungames.jfortniteparse.ue4.versions.Ue4Version;
+import me.fungames.jfortniteparse.util.DataTypeConverterKt;
 
 import static com.tb24.blenderumap.AssetUtilsKt.getProp;
 import static com.tb24.blenderumap.AssetUtilsKt.getProps;
@@ -100,7 +102,7 @@ public class Main {
 				throw new MainException("Please specify ExportPackage.");
 			}
 
-			provider = new MyFileProvider(paksDir, config.UEVersion, config.EncryptionKeys, config.bDumpAssets);
+			provider = new MyFileProvider(paksDir, config.UEVersion, config.EncryptionKeys, config.bDumpAssets, config.ObjectCacheSize);
 			File newestUsmap = getNewestUsmap("mappings");
 			if (newestUsmap != null) {
 				TypeMappingsProvider usmap = new UsmapTypeMappingsProvider(newestUsmap);
@@ -121,8 +123,8 @@ public class Main {
 			try (FileWriter writer = new FileWriter(file)) {
 //				GSON.toJson(components, writer);
 				String pkgName = provider.compactFilePath(pkg.getName());
-				if (!pkgName.endsWith(".umap")) {
-					pkgName += ".umap";
+				if (pkgName.endsWith(".umap")) {
+					pkgName = pkgName.substring(0, pkgName.lastIndexOf('.'));
 				}
 				GSON.toJson(pkgName, writer);
 			}
@@ -235,7 +237,7 @@ public class Main {
 
 			if (config.bReadMaterials /*&& actor instanceof BuildingSMActor*/) {
 				Lazy<UMaterialInterface> material = getProp(actor, "BaseMaterial", Lazy.class); // /Script/FortniteGame.BuildingSMActor:BaseMaterial
-				List<Lazy<UMaterialInterface>> overrideMaterials = getProp(staticMeshExp, "OverrideMaterials", List.class); // /Script/Engine.MeshComponent:OverrideMaterials
+				List<Lazy<UMaterialInterface>> overrideMaterials = getProp(staticMeshExp, "OverrideMaterials", TypeToken.getParameterized(List.class, UMaterialInterface.class).getType()); // /Script/Engine.MeshComponent:OverrideMaterials
 
 				for (Lazy<BuildingTextureData> textureDataIdx : getProps(actor.getProperties(), "TextureData", Lazy.class)) { // /Script/FortniteGame.BuildingSMActor:TextureData
 					BuildingTextureData td = textureDataIdx != null ? textureDataIdx.getValue() : null;
@@ -272,9 +274,9 @@ public class Main {
 
 			// region additional worlds
 			JsonArray children = new JsonArray();
-			List<FSoftObjectPath> additionalWorlds = getProp(actor, "AdditionalWorlds", List.class); // /Script/FortniteGame.BuildingFoundation:AdditionalWorlds
+			List<FSoftObjectPath> additionalWorlds = getProp(actor, "AdditionalWorlds", TypeToken.getParameterized(List.class, FSoftObjectPath.class).getType()); // /Script/FortniteGame.BuildingFoundation:AdditionalWorlds
 
-			if (additionalWorlds != null) {
+			if (config.bExportBuildingFoundations && additionalWorlds != null) {
 				for (FSoftObjectPath additionalWorld : additionalWorlds) {
 					String text = additionalWorld.getAssetPathName().getText();
 					Package cpkg = exportAndProduceProcessed(StringsKt.substringBeforeLast(text, '.', text) + ".umap");
@@ -294,8 +296,8 @@ public class Main {
 
 		Package pkg = world.getOwner();
 		String pkgName = provider.compactFilePath(pkg.getName());
-		if (!pkgName.endsWith(".umap")) {
-			pkgName += ".umap";
+		if (pkgName.endsWith(".umap")) {
+			pkgName = pkgName.substring(0, pkgName.lastIndexOf('.'));
 		}
 		File file = new File(MyFileProvider.JSONS_FOLDER, pkgName + ".processed.json");
 		file.getParentFile().mkdirs();
@@ -331,7 +333,7 @@ public class Main {
 				return;
 			}
 			FTexturePlatformData platformData = texture.getFirstTexture();
-			char[] fourCC = TexturesKt.getDdsFourCC(platformData);
+			char[] fourCC = config.bExportToDDSWhenPossible ? TexturesKt.getDdsFourCC(platformData) : null;
 			File output = new File(getExportDir(texture), texture.getName() + (fourCC != null ? ".dds" : ".png"));
 
 			if (output.exists()) {
@@ -391,7 +393,7 @@ public class Main {
 			pw.println("-game=ue4." + GameKt.GAME_UE4_GET_MINOR(config.UEVersion.getGame()));
 
 			if (config.EncryptionKeys.size() > 0) { // TODO run umodel multiple times if there's more than one encryption key
-				pw.println("-aes=0x" + ByteArrayUtils.encode(config.EncryptionKeys.get(0).Key));
+				pw.println("-aes=0x" + DataTypeConverterKt.printHexBinary(config.EncryptionKeys.get(0).Key));
 			}
 
 			pw.println("-out=\"" + new File("").getAbsolutePath() + '\"');
@@ -565,10 +567,13 @@ public class Main {
 		public String PaksDirectory = "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks";
 		public Ue4Version UEVersion = Ue4Version.GAME_UE4_LATEST;
 		public List<MyFileProvider.EncryptionKey> EncryptionKeys = Collections.emptyList();
+		public boolean bDumpAssets = false;
+		public int ObjectCacheSize = 100;
 		public boolean bReadMaterials = false;
+		public boolean bExportToDDSWhenPossible = true;
+		public boolean bExportBuildingFoundations = true;
 		public boolean bUseUModel = true;
 		public String UModelAdditionalArgs = "";
-		public boolean bDumpAssets = false;
 		public String ExportPackage;
 	}
 
