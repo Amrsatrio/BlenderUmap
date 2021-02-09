@@ -19,7 +19,7 @@ use_cube_as_fallback = True
 
 # ---------- END INPUTS, DO NOT MODIFY ANYTHING BELOW UNLESS YOU NEED TO ----------
 def import_umap(processed_map_path: str,
-                into_collection: bpy.types.Collection) -> bpy.types.Object:
+                into_collection: bpy.types.Collection, data_dir: str, reuse_maps: bool, reuse_meshes: bool, use_cube_as_fallback: bool) -> bpy.types.Object:
     map_name = processed_map_path[processed_map_path.rindex("/") + 1:]
     map_collection = bpy.data.collections.get(map_name)
 
@@ -257,55 +257,55 @@ def string_hash_code(s: str) -> int:
         h = (31 * h + ord(c)) & 0xFFFFFFFF
     return ((h + 0x80000000) & 0xFFFFFFFF) - 0x80000000
 
-
-start = int(time.time() * 1000.0)
-
-uvm = bpy.data.node_groups.get("UV Shader Mix")
-tex_shader = bpy.data.node_groups.get("Texture Shader")
-
-if not uvm or not tex_shader:
-    with bpy.data.libraries.load(os.path.join(data_dir, "deps.blend")) as (data_from, data_to):
-        data_to.node_groups = data_from.node_groups
+if __name__ == "__main":
+    start = int(time.time() * 1000.0)
 
     uvm = bpy.data.node_groups.get("UV Shader Mix")
     tex_shader = bpy.data.node_groups.get("Texture Shader")
 
-# make sure we're on main scene to deal with the fallback objects
-main_scene = bpy.data.scenes.get("Scene") or bpy.data.scenes.new("Scene")
-bpy.context.window.scene = main_scene
+    if not uvm or not tex_shader:
+        with bpy.data.libraries.load(os.path.join(data_dir, "deps.blend")) as (data_from, data_to):
+            data_to.node_groups = data_from.node_groups
 
-# prepare collection for imports
-import_collection = bpy.data.collections.get("Imported")
+        uvm = bpy.data.node_groups.get("UV Shader Mix")
+        tex_shader = bpy.data.node_groups.get("Texture Shader")
 
-if import_collection:
-    bpy.ops.object.select_all(action='DESELECT')
+    # make sure we're on main scene to deal with the fallback objects
+    main_scene = bpy.data.scenes.get("Scene") or bpy.data.scenes.new("Scene")
+    bpy.context.window.scene = main_scene
 
-    for obj in import_collection.objects:
-        obj.select_set(True)
+    # prepare collection for imports
+    import_collection = bpy.data.collections.get("Imported")
 
-    bpy.ops.object.delete()
-else:
-    import_collection = bpy.data.collections.new("Imported")
-    main_scene.collection.children.link(import_collection)
+    if import_collection:
+        bpy.ops.object.select_all(action='DESELECT')
 
-cleanup()
+        for obj in import_collection.objects:
+            obj.select_set(True)
 
-# setup fallback cube mesh
-bpy.ops.mesh.primitive_cube_add(size=2)
-fallback_cube = bpy.context.active_object
-fallback_cube_mesh = fallback_cube.data
-fallback_cube_mesh.name = "__fallback"
-bpy.data.objects.remove(fallback_cube)
+        bpy.ops.object.delete()
+    else:
+        import_collection = bpy.data.collections.new("Imported")
+        main_scene.collection.children.link(import_collection)
 
-# 2. empty mesh
-empty_mesh = bpy.data.meshes.get("__empty", bpy.data.meshes.new("__empty"))
+    cleanup()
 
-# do it!
-with open(os.path.join(data_dir, "processed.json")) as file:
-    import_umap(json.loads(file.read()), import_collection)
+    # setup fallback cube mesh
+    bpy.ops.mesh.primitive_cube_add(size=2)
+    fallback_cube = bpy.context.active_object
+    fallback_cube_mesh = fallback_cube.data
+    fallback_cube_mesh.name = "__fallback"
+    bpy.data.objects.remove(fallback_cube)
 
-# go back to main scene
-bpy.context.window.scene = main_scene
-cleanup()
+    # 2. empty mesh
+    empty_mesh = bpy.data.meshes.get("__empty", bpy.data.meshes.new("__empty"))
 
-print("All done in " + str(int((time.time() * 1000.0) - start)) + "ms")
+    # do it!
+    with open(os.path.join(data_dir, "processed.json")) as file:
+        import_umap(json.loads(file.read()), import_collection, data_dir, reuse_maps, reuse_meshes, use_cube_as_fallback)
+
+    # go back to main scene
+    bpy.context.window.scene = main_scene
+    cleanup()
+
+    print("All done in " + str(int((time.time() * 1000.0) - start)) + "ms")
