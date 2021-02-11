@@ -1,5 +1,6 @@
 import bpy
 from typing import List, Any, TypeVar
+import os
 import json
 
 T = TypeVar("T")
@@ -11,9 +12,11 @@ def from_list(x: Any) -> List[T]:
     "Key": bpy.context.scene.aeskey
     })
     for a in x:
+        if a.pakname == "" and a.daeskey == "":
+            continue
         l.append({
-            "Key" : a.pakname,
-            "FileName" : a.daeskey
+            "FileName" : a.pakname,
+            "Key" : a.daeskey
         })
     return l
 
@@ -64,6 +67,6 @@ class Config:
         result["ExportPackage"] = self.ExportPackage
         return result
 
-    def dump(self):
-        with open("config.json","w") as f:
+    def dump(self,path):
+        with open(os.path.join(path,"config.json"),"w") as f:
             json.dump(self.to_dict(),f,indent=4)

@@ -17,6 +17,7 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -299,7 +300,7 @@ public class Main {
 		if (pkgName.endsWith(".umap")) {
 			pkgName = pkgName.substring(0, pkgName.lastIndexOf('.'));
 		}
-		File file = new File(MyFileProvider.JSONS_FOLDER, pkgName + ".processed.json");
+		File file = new File(config.ExportPath + "/" + MyFileProvider.JSONS_FOLDER, pkgName + ".processed.json");
 		file.getParentFile().mkdirs();
 		LOGGER.info("Writing to {}", file.getAbsolutePath());
 
@@ -360,7 +361,7 @@ public class Main {
 			pkgPath = pkgPath.substring(1);
 		}
 
-		File outputDir = new File(pkgPath).getParentFile();
+		File outputDir = new File(String.valueOf(Paths.get(config.ExportPath, pkgPath))).getParentFile();
 		String pkgName = StringsKt.substringAfterLast(pkgPath, '/', pkgPath);
 
 		if (!exportObj.getName().equals(pkgName)) {
@@ -392,11 +393,13 @@ public class Main {
 			pw.println("-path=\"" + config.PaksDirectory + '\"');
 			pw.println("-game=ue4." + GameKt.GAME_UE4_GET_MINOR(config.UEVersion.getGame()));
 
-			if (config.EncryptionKeys.size() > 0) { // TODO run umodel multiple times if there's more than one encryption key
-				pw.println("-aes=0x" + DataTypeConverterKt.printHexBinary(config.EncryptionKeys.get(0).Key));
+			if (config.EncryptionKeys.size() > 0) {
+				for (int i = 0; i < config.EncryptionKeys.size(); i++) {
+					pw.println("-aes=0x" + DataTypeConverterKt.printHexBinary(config.EncryptionKeys.get(i).Key));
+				}
 			}
 
-			pw.println("-out=\"" + new File("").getAbsolutePath() + '\"');
+			pw.println("-out=\"" + config.ExportPath);
 
 			if (!isEmpty(config.UModelAdditionalArgs)) {
 				pw.println(config.UModelAdditionalArgs);
@@ -566,6 +569,7 @@ public class Main {
 	public static class Config {
 		public String PaksDirectory = "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks";
 		public Ue4Version UEVersion = Ue4Version.GAME_UE4_LATEST;
+		public String ExportPath = "";
 		public List<MyFileProvider.EncryptionKey> EncryptionKeys = Collections.emptyList();
 		public boolean bDumpAssets = false;
 		public int ObjectCacheSize = 100;

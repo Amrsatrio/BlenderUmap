@@ -5,11 +5,69 @@ import os
 from math import *
 from urllib.request import urlopen, Request
 from .config import Config
-# from ..umap import import_umap, cleanup
-
+from .umap import import_umap, cleanup
 
 def main(context):
-    pass
+    sc = bpy.context.scene
+    reuse_maps = sc.reuse_maps
+    reuse_meshes = sc.reuse_mesh
+    use_cube_as_fallback = sc.use_cube_as_fallback
+    data_dir = sc.exportPath
+    addon_dir = os.path.dirname(os.path.splitext(__file__)[0])
+
+    Config().dump(sc.exportPath)
+
+    exporter_result = os.system(f'START /WAIT /D "{data_dir}" cmd /K java -jar "{os.path.join(addon_dir,"BlenderUmap.jar")}"')
+    if exporter_result != 0:
+        raise Exception("Exporter returned non zero result which means something went wrong while exporting")
+
+    uvm = bpy.data.node_groups.get("UV Shader Mix")
+    tex_shader = bpy.data.node_groups.get("Texture Shader")
+
+    if not uvm or not tex_shader:
+        with bpy.data.libraries.load(os.path.join(addon_dir, "deps.blend")) as (data_from, data_to):
+            data_to.node_groups = data_from.node_groups
+
+        uvm = bpy.data.node_groups.get("UV Shader Mix")
+        tex_shader = bpy.data.node_groups.get("Texture Shader")
+
+    # make sure we're on main scene to deal with the fallback objects
+    main_scene = bpy.data.scenes.get("Scene") or bpy.data.scenes.new("Scene")
+    bpy.context.window.scene = main_scene
+
+    # prepare collection for imports
+    import_collection = bpy.data.collections.get("Imported")
+
+    if import_collection:
+        bpy.ops.object.select_all(action='DESELECT')
+
+        for obj in import_collection.objects:
+            obj.select_set(True)
+
+        bpy.ops.object.delete()
+    else:
+        import_collection = bpy.data.collections.new("Imported")
+        main_scene.collection.children.link(import_collection)
+
+    cleanup()
+
+    # setup fallback cube mesh
+    bpy.ops.mesh.primitive_cube_add(size=2)
+    fallback_cube = bpy.context.active_object
+    fallback_cube_mesh = fallback_cube.data
+    fallback_cube_mesh.name = "__fallback"
+    bpy.data.objects.remove(fallback_cube)
+
+    # 2. empty mesh
+    empty_mesh = bpy.data.meshes.get("__empty", bpy.data.meshes.new("__empty"))
+
+    # do it!
+    with open(os.path.join(data_dir, "processed.json")) as file:
+        import_umap(json.loads(file.read()), import_collection, data_dir, reuse_maps, reuse_meshes, use_cube_as_fallback, tex_shader)
+
+    # go back to main scene
+    bpy.context.window.scene = main_scene
+    cleanup()
 
 
 class UE4Version(bpy.types.Operator):  # idk why
@@ -152,7 +210,6 @@ class VIEW_PT_UmapOperator(bpy.types.Operator):
     bl_label = "Umap Exporter"
 
     def execute(self, context):
-        Config().dump()
         main(context)
         return {"FINISHED"}
 
@@ -198,7 +255,7 @@ class Fortnite(bpy.types.Operator):
         req = Request(url="https://benbotfn.tk/api/v1/aes", headers=headers)
         r = urlopen(req)
         data = json.loads(r.read().decode(r.info().get_param("charset") or "utf-8"))
-        # bpy.types.Scene.aeskey = data["mainKey"]
+        bpy.context.scene.aeskey = data["mainKey"]
 
         dpklist = context.scene.dpklist
         context.scene.list_index = len(dpklist)
@@ -299,7 +356,7 @@ if you want to quickly port the base POI structures, by setting this to false",
     bpy.types.Scene.bdumpassets = BoolProperty(
         name="Dump Assets",
         description="Save assets as JSON format",
-        default=True,
+        default=False,
         subtype="NONE",
     )
 
@@ -313,21 +370,21 @@ if you want to quickly port the base POI structures, by setting this to false",
     bpy.types.Scene.bUseUModel = BoolProperty(
         name="Use UModel",
         description="Use UModel for the exporting process to export meshes, materials, and textures",
-        default=True,
+        default=False,
         subtype="NONE",
     )
 
     bpy.types.Scene.reuse_maps = BoolProperty(
         name="Reuse Maps",
         description="Reuse already imported map rather then importing them again",
-        default=False,
+        default=True,
         subtype="NONE",
     )
 
     bpy.types.Scene.reuse_mesh = BoolProperty(
         name="Reuse Meshes",
         description="Reuse already imported meshes rather then importing them again",
-        default=False,
+        default=True,
         subtype="NONE",
     )
 
@@ -355,9 +412,7 @@ def unregister():
     # bpy.utils.unregister_class(VIEW_PT_Import)
 
     # idk why we unregister
-    sc = bpy.context.scene
-    del sc.dpklist
-    del sc.list_index
+    sc = bpy.types.Scene
     del sc.Game_Path
     del sc.aeskey
     del sc.package
