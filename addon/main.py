@@ -2,7 +2,6 @@ import bpy
 from bpy.props import StringProperty, IntProperty, CollectionProperty, BoolProperty
 import json
 import os
-from math import *
 from urllib.request import urlopen, Request
 from .config import Config
 from .umap import import_umap, cleanup
@@ -210,9 +209,47 @@ class VIEW_PT_UmapOperator(bpy.types.Operator):
     bl_label = "Umap Exporter"
 
     def execute(self, context):
+        if bpy.context.scene.ue4_versions in ["GAME_UE4_26","GAME_UE4_27","GAME_UE4_LATEST"]:
+            self.check_mappings()
+
+        if context.scene.bUseUModel:
+            if not os.path.exists(os.path.join(bpy.context.scene.exportPath,"umodel.exe")):
+                self.report({'ERROR'}, 'umodel.exe not found in Export Directory(Export Path)')
+                return {"FINISHED"}
+
         main(context)
         return {"FINISHED"}
 
+    def check_mappings(self):
+        path = bpy.context.scene.exportPath
+        mappings_path = os.path.join(path, "mappings")
+        if not os.path.exists(mappings_path):
+            os.makedirs(mappings_path)
+            self.dl_mappings(mappings_path)
+            return False
+
+        try:
+            self.dl_mappings(mappings_path)
+        except: pass
+        return True
+
+    def dl_mappings(self,path):
+        ENDPOINT = "https://benbotfn.tk/api/v1/mappings"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36",
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"
+        }
+
+        req = Request(url=ENDPOINT, headers=headers)
+        r = urlopen(req)
+        data = json.loads(r.read().decode(r.info().get_param("charset") or "utf-8"))
+
+        if not os.path.exists(os.path.join(path,data[0]["fileName"])):
+            with open(os.path.join(path,data[0]["fileName"]),"wb") as f:
+                downfile = urlopen(Request(url=data[0]["url"], headers=headers))
+                print("Downloading",data[0]["fileName"])
+                f.write(downfile.read(downfile.length))
+        return True
 
 class ListItem(bpy.types.PropertyGroup):
     pakname: StringProperty(
