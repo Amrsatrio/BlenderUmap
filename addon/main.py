@@ -69,12 +69,8 @@ def main(context):
     cleanup()
 
 
-class UE4Version(bpy.types.Operator):  # idk why
+class UE4Version:  # idk why
     """Supported UE4 Versions"""
-
-    bl_idname = "umap.ue4versions"
-    bl_label = "uhhh versions"
-    bl_description = "Supported UE4 Versions"
 
     Versions = (
         ("GAME_UE4_0", "GAME_UE4_0", ""),
@@ -107,8 +103,6 @@ class UE4Version(bpy.types.Operator):  # idk why
         ("GAME_VALORANT", "GAME_VALORANT", ""),
         ("GAME_UE4_LATEST", "GAME_UE4_LATEST", ""),
     )
-
-    # ue4_versions: bpy.props.EnumProperty(name="UE4 Version:", items=Versions)
 
 
 # Button
@@ -215,7 +209,7 @@ class VIEW_PT_UmapOperator(bpy.types.Operator):
         if context.scene.bUseUModel:
             if not os.path.exists(os.path.join(bpy.context.scene.exportPath,"umodel.exe")):
                 self.report({'ERROR'}, 'umodel.exe not found in Export Directory(Export Path)')
-                return {"FINISHED"}
+                return {"CANCELLED"}
 
         main(context)
         return {"FINISHED"}
