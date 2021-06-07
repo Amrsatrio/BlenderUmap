@@ -228,7 +228,7 @@ class VIEW_PT_UmapOperator(bpy.types.Operator):
         return True
 
     def dl_mappings(self,path):
-        ENDPOINT = "https://benbotfn.tk/api/v1/mappings"
+        ENDPOINT = "https://benbot.app/api/v1/mappings"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36",
             "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"
@@ -283,7 +283,7 @@ class Fortnite(bpy.types.Operator):
             "User-Agent": "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.3"
         }
 
-        req = Request(url="https://benbotfn.tk/api/v1/aes", headers=headers)
+        req = Request(url="https://benbot.app/api/v1/aes", headers=headers)
         r = urlopen(req)
         data = json.loads(r.read().decode(r.info().get_param("charset") or "utf-8"))
         bpy.context.scene.aeskey = data["mainKey"]
