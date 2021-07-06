@@ -1,6 +1,9 @@
 # BlenderUmap
 A Java tool to export Fortnite .umaps and a Python script to import it.
 
+## Disclaimer
+This tool was made to fulfill my curiosity about exporting a Fortnite building into Blender back in May 2020, and I did not plan to support this for long term. Although I rarely release some updates to fix some breaking stuff with Fortnite (and/or incorporating enhancements on the underlying parser), **no support will be given when it's about small issues, failing to use the tool properly, or adding support for more games.** Take your time to read the stuff below, and thank you for your understanding.
+
 ## Usage
 * Before running the tool you need to have 64-bit Java installed. [Get it here. (choose 64-bit Offline)](https://www.java.com/en/download/manual.jsp)\
   **32-bit Java won't work with this tool!**
@@ -31,7 +34,7 @@ A Java tool to export Fortnite .umaps and a Python script to import it.
   ```
 * `bDumpAssets`: Save assets as JSON format, useful for debugging.
 * `ObjectCacheSize`: Configure the object loader cache size to tune the performance, or set to 0 to disable. Defaults to 100.
-* `bReadMaterials`: Export materials. Materials are experimental! Not all imported materials will be perfect. **Min. 24GB of RAM recommended!**
+* `bReadMaterials`: Export materials. Materials are experimental! Not all imported materials will be perfect. **Min. 16GB of RAM recommended!**
 * `bExportToDDSWhenPossible`: Prefer PNG over DDS? Set this to `false` and textures will always be exported as PNG. **Warning: Export times will significantly increase when this is set to `false`!** Defaults to enabled.
 * `bExportBuildingFoundations`: You can turn off exporting sub-buildings in large POIs if you want to quickly port the base POI structures, by setting this to `false`. Defaults to enabled.
 * `bUseUModel`: Run UModel within the exporting process to export meshes, materials, and textures.
