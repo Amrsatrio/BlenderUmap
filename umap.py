@@ -144,6 +144,7 @@ def import_material(ob: bpy.types.Object,
         for node in tree.nodes:
             tree.nodes.remove(node)
 
+        m.use_backface_culling = True
         m.blend_method = "OPAQUE"
 
         def group(sub_tex_idx, location,tex_shader):

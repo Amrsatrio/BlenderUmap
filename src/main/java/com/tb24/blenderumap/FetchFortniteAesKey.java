@@ -1,27 +1,17 @@
 package com.tb24.blenderumap;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.google.gson.*;
+import kotlin.io.FilesKt;
+import me.fungames.jfortniteparse.util.DataTypeConverterKt;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
 
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.Reader;
+import java.io.*;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.Map;
-
-import kotlin.io.FilesKt;
-import me.fungames.jfortniteparse.util.DataTypeConverterKt;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
 
 public class FetchFortniteAesKey {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -41,7 +31,7 @@ public class FetchFortniteAesKey {
 
 	private static void updateEncryptionKeys() throws IOException {
 		System.out.println("Fetching encryption keys...");
-		Reader reader = okHttpClient.newCall(new Request.Builder().url("https://benbotfn.tk/api/v1/aes").build()).execute().body().charStream();
+		Reader reader = okHttpClient.newCall(new Request.Builder().url("https://benbot.app/api/v1/aes").build()).execute().body().charStream();
 		System.out.println("Updating config...");
 		AesResponse response = GSON.fromJson(reader, AesResponse.class);
 		reader.close();
@@ -70,7 +60,7 @@ public class FetchFortniteAesKey {
 
 	private static void updateMappings() throws IOException, GeneralSecurityException {
 		System.out.println("Fetching available mappings...");
-		Reader reader = okHttpClient.newCall(new Request.Builder().url("https://benbotfn.tk/api/v1/mappings").build()).execute().body().charStream();
+		Reader reader = okHttpClient.newCall(new Request.Builder().url("https://benbot.app/api/v1/mappings").build()).execute().body().charStream();
 		FileEntry[] response = GSON.fromJson(reader, FileEntry[].class);
 		FileEntry chosen = null;
 		for (FileEntry entry : response) {

@@ -7,7 +7,6 @@ import com.google.gson.*
 import me.fungames.jfortniteparse.ue4.assets.IoPackage
 import me.fungames.jfortniteparse.ue4.assets.PakPackage
 import me.fungames.jfortniteparse.ue4.assets.UProperty
-import me.fungames.jfortniteparse.ue4.assets.exports.ECurveTableMode
 import me.fungames.jfortniteparse.ue4.assets.exports.UCurveTable
 import me.fungames.jfortniteparse.ue4.assets.exports.UDataTable
 import me.fungames.jfortniteparse.ue4.assets.exports.UObject
@@ -27,26 +26,25 @@ import me.fungames.jfortniteparse.util.printHexBinary
 import java.lang.reflect.Type
 import java.math.BigInteger
 import java.util.*
+import kotlin.jvm.JvmField as F
 
 /**
  * Provides John Wick Parse JSON data structure for JFortniteParse objects.
  * @author amrsatrio
  */
 object JWPSerializer {
-	@JvmField
-	var sUseNonstandardFormat = false
-
-	@JvmField
-	val GSON: Gson = GsonBuilder()
+	@F var sUseNonstandardFormat = false
+	@F var sSerializePathName = false
+	@F val GSON: Gson = GsonBuilder()
 		.disableHtmlEscaping()
 		//.setPrettyPrinting()
 		.serializeNulls()
 		.setFieldNamingStrategy {
 			it.getAnnotation(UProperty::class.java)?.name
-				?: separateCamelCase(it.name, "_").toLowerCase(Locale.ENGLISH)
+				?: separateCamelCase(it.name, "_").toLowerCase(Locale.ROOT)
 		}
 		.registerTypeAdapter(ByteArray::class.java, ByteArraySerializer())
-		.registerTypeAdapter(UByte::class.java, JsonSerializer<UByte> { src, typeOfSrc, context -> JsonPrimitive(src.toString()) })
+		.registerTypeAdapter(UByte::class.java, JsonSerializer<UByte> { src, typeOfSrc, context -> JsonPrimitive(src.toShort()) })
 		.registerTypeAdapter(UShort::class.java, JsonSerializer<UShort> { src, typeOfSrc, context -> JsonPrimitive(src.toInt()) })
 		.registerTypeAdapter(UInt::class.java, JsonSerializer<UInt> { src, typeOfSrc, context -> JsonPrimitive(src.toLong()) })
 		.registerTypeAdapter(ULong::class.java, JsonSerializer<ULong> { src, typeOfSrc, context -> JsonPrimitive(BigInteger(src.toString())) })
@@ -88,7 +86,7 @@ object JWPSerializer {
 		.registerTypeAdapter(FPackageIndex::class.java, JsonSerializer<FPackageIndex> { src, typeOfSrc, context ->
 			if (src.isImport()) {
 				val pkg = src.owner
-				JsonArray().apply {
+				val arr = JsonArray().apply {
 					if (pkg is PakPackage) {
 						var current = pkg.run { src.getResource() }
 						while (current != null) {
@@ -102,11 +100,9 @@ object JWPSerializer {
 							add(current.getName().text)
 							current = current.getOuter()
 						}
-						if (initial is IoPackage.ResolvedExportObject) {
-							add(initial.pkg.name)
-						}
 					}
 				}
+				if (arr.size() > 0) arr else null
 			} else {
 				JsonObject().apply {
 					addProperty("export", src.index)
@@ -118,13 +114,16 @@ object JWPSerializer {
 		})
 		.registerTypeAdapter(UScriptMap::class.java, JsonSerializer<UScriptMap> { src, typeOfSrc, context ->
 			JsonArray().apply {
-				for ((k, v) in src.mapData) {
+				for ((k, v) in src.entries) {
 					add(JsonObject().apply {
 						add("key", context.serialize(k))
 						add("value", context.serialize(v))
 					})
 				}
 			}
+		})
+		.registerTypeAdapter(UScriptSet::class.java, JsonSerializer<UScriptSet> { src, typeOfSrc, context ->
+			JsonArray().apply { src.elements.forEach { add(context.serialize(it)) } }
 		})
 		.registerTypeHierarchyAdapter(FSoftObjectPath::class.java, JsonSerializer<FSoftObjectPath> { src, typeOfSrc, context ->
 			JsonObject().apply {
@@ -170,11 +169,11 @@ object JWPSerializer {
 							add(JsonArray(2).apply {
 								add(context.serialize(k))
 								add(JsonObject().apply {
-									addProperty("export_type", when (src.curveTableMode) {
-										ECurveTableMode.Empty -> "Empty"
-										ECurveTableMode.SimpleCurves -> "SimpleCurveKey"
-										ECurveTableMode.RichCurves -> "RichCurveKey"
-									}) // this is actually wrong but we're serializing it anyways to keep compatibility
+									/*addProperty("export_type", when (src.curveTableMode) {
+                                        ECurveTableMode.Empty -> "Empty"
+                                        ECurveTableMode.SimpleCurves -> "SimpleCurveKey"
+                                        ECurveTableMode.RichCurves -> "RichCurveKey"
+                                    })*/ // this is actually wrong but we're serializing it anyways to keep compatibility
 									context.serialize(v).asJsonObject.entrySet().forEach {
 										add(it.key, it.value)
 									}
@@ -192,7 +191,7 @@ object JWPSerializer {
 			val obj = JsonObject()
 			//if (sUseNonstandardFormat && src.export != null) obj.addProperty("object_name", src.export!!.objectName.text)
 			obj.addProperty("export_type", src.exportType)
-			obj.addProperty("path_name", src.getPathName(src.owner))
+			if (sSerializePathName) obj.addProperty("path_name", src.getPathName(src.owner))
 
 			if (src !is UDataTable || sUseNonstandardFormat)
 				serializeProperties(obj, src.properties, context)
@@ -202,7 +201,7 @@ object JWPSerializer {
 					obj.add("rows", JsonObject().apply {
 						for ((key, value) in src.rows) {
 							add(key.text, JsonObject().apply {
-								addProperty("export_type", "RowStruct")
+								//addProperty("export_type", "RowStruct")
 								serializeProperties(this, value.properties, context)
 							})
 						}
@@ -210,7 +209,7 @@ object JWPSerializer {
 				} else {
 					for ((key, value) in src.rows) {
 						obj.add(key.text, JsonObject().apply {
-							addProperty("export_type", "RowStruct")
+							//addProperty("export_type", "RowStruct")
 							serializeProperties(this, value.properties, context)
 						})
 					}

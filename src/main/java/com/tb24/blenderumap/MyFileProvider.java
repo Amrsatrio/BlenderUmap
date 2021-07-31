@@ -1,7 +1,15 @@
 package com.tb24.blenderumap;
 
 import androidx.collection.LruCache;
-
+import kotlin.collections.MapsKt;
+import me.fungames.jfortniteparse.fileprovider.DefaultFileProvider;
+import me.fungames.jfortniteparse.ue4.assets.IoPackage;
+import me.fungames.jfortniteparse.ue4.assets.Package;
+import me.fungames.jfortniteparse.ue4.objects.core.misc.FGuid;
+import me.fungames.jfortniteparse.ue4.objects.uobject.FPackageId;
+import me.fungames.jfortniteparse.ue4.pak.GameFile;
+import me.fungames.jfortniteparse.ue4.pak.PakFileReader;
+import me.fungames.jfortniteparse.ue4.versions.Ue4Version;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,16 +20,6 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-
-import kotlin.collections.MapsKt;
-import me.fungames.jfortniteparse.fileprovider.DefaultFileProvider;
-import me.fungames.jfortniteparse.ue4.assets.IoPackage;
-import me.fungames.jfortniteparse.ue4.assets.Package;
-import me.fungames.jfortniteparse.ue4.objects.core.misc.FGuid;
-import me.fungames.jfortniteparse.ue4.objects.uobject.FPackageId;
-import me.fungames.jfortniteparse.ue4.pak.GameFile;
-import me.fungames.jfortniteparse.ue4.pak.PakFileReader;
-import me.fungames.jfortniteparse.ue4.versions.Ue4Version;
 
 import static com.tb24.blenderumap.JWPSerializer.GSON;
 
@@ -45,6 +43,8 @@ public class MyFileProvider extends DefaultFileProvider {
 		} else {
 			cache = null;
 		}
+
+		setIoStoreTocReadOptions(0);
 
 		Map<FGuid, byte[]> keysToSubmit = new HashMap<>();
 		for (EncryptionKey entry : encryptionKeys) {
