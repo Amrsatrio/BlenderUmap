@@ -14,10 +14,18 @@ def from_list(x: Any) -> List[T]:
     for a in x:
         if a.pakname == "" and a.daeskey == "":
             continue
-        l.append({
-            "FileName" : a.pakname,
-            "Key" : a.daeskey
-        })
+        if a.guid == "" and a.pakname == "":
+            continue
+        if a.daeskey == "":
+            continue
+
+        d = {}
+        if a.guid != "":
+            d["Guid"] = a.guid
+        else:
+            d["Pakname"] = a.pakname
+        d["Key"] = a.daeskey
+        l.append(d)
     return l
 
 class Config:
@@ -56,7 +64,6 @@ class Config:
         result["PaksDirectory"] = self.PaksDirectory
         result["ExportPath"] = self.ExportPath
         result["UEVersion"] = self.UEVersion
-        result["EncryptionKeys"] = from_list(self.EncryptionKeys)
         result["bDumpAssets"] = self.bDumpAssets
         result["ObjectCacheSize"] = self.ObjectCacheSize
         result["bReadMaterials"] = self.bReadMaterials
@@ -65,7 +72,48 @@ class Config:
         result["bUseUModel"] = self.bUseUModel
         result["UModelAdditionalArgs"] = self.UModelAdditionalArgs
         result["ExportPackage"] = self.ExportPackage
+        result["EncryptionKeys"] = from_list(self.EncryptionKeys)
         return result
+
+    def load(self, out = {}):
+        if not os.path.exists(os.path.join(self.ExportPath,"config.json")):
+            return
+        with open(os.path.join(self.ExportPath,"config.json"),"r") as f:
+            data = json.load(f)
+            out = data
+
+        sc = bpy.context.scene
+
+        sc.Game_Path = data["PaksDirectory"] + "/"
+        sc.exportPath = data["ExportPath"]
+        sc.ue4_versions = data["UEVersion"]
+        sc.bdumpassets = data["bDumpAssets"]
+        sc.ObjectCacheSize = data["ObjectCacheSize"]
+        sc.readmats = data["bReadMaterials"]
+        sc.bExportToDDSWhenPossible = data["bExportToDDSWhenPossible"]
+        sc.bExportBuildingFoundations = data["bExportBuildingFoundations"]
+        sc.bUseUModel = data["bUseUModel"]
+        sc.additionalargs = data["UModelAdditionalArgs"]
+        sc.package = data["ExportPackage"]
+
+        for a in range(len(sc.dpklist)):
+            sc.dpklist.remove(a)
+
+        sc.list_index = 0
+        i = 0
+        for x in data["EncryptionKeys"]:
+            if guid := x.get("Guid"):
+                if guid == "00000000000000000000000000000000":
+                    sc.aeskey = x["Key"]
+                    continue
+
+            sc.list_index = i
+            sc.dpklist.add()
+            dpk = sc.dpklist[i]
+            dpk.guid = x.get("Guid") or ""
+            dpk.pakname = x.get("FileName") or ""
+            dpk.daeskey = x["Key"]
+            i += 1
 
     def dump(self,path):
         with open(os.path.join(path,"config.json"),"w") as f:

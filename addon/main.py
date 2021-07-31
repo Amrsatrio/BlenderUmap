@@ -1,10 +1,17 @@
+import typing
 import bpy
 from bpy.props import StringProperty, IntProperty, CollectionProperty, BoolProperty
 import json
 import os
 from urllib.request import urlopen, Request
+
+from bpy.types import Context
 from .config import Config
-from .umap import import_umap, cleanup
+
+try:
+    from .umap import import_umap, cleanup
+except ImportError:
+    from ..umap import import_umap, cleanup
 
 def main(context):
     sc = bpy.context.scene
@@ -18,7 +25,7 @@ def main(context):
 
     exporter_result = os.system(f'START /WAIT /D "{data_dir}" cmd /K java -jar "{os.path.join(addon_dir,"BlenderUmap.jar")}"')
     if exporter_result != 0:
-        raise Exception("Exporter returned non zero result which means something went wrong while exporting")
+        raise Exception("Exporter returned non zero exit code")
 
     uvm = bpy.data.node_groups.get("UV Shader Mix")
     tex_shader = bpy.data.node_groups.get("Texture Shader")
@@ -68,7 +75,6 @@ def main(context):
     bpy.context.window.scene = main_scene
     cleanup()
 
-
 class UE4Version:  # idk why
     """Supported UE4 Versions"""
 
@@ -104,13 +110,21 @@ class UE4Version:  # idk why
         ("GAME_UE4_LATEST", "GAME_UE4_LATEST", ""),
     )
 
+class VIEW3D_MT_AdditionalOptions(bpy.types.Menu):
+        bl_label = "Additional Options"
 
-# Button
-class VIEW_PT_Import(bpy.types.Panel):
+        def draw(self, context):
+            layout = self.layout
+            col = layout.column()
+
+            col.operator("umap.fillfortnitekeys", icon="FILE_FONT",text="Fill Fortnite AES Keys", depress=False)
+
+# UI
+class VIEW3D_PT_Import(bpy.types.Panel):
     """Creates a Panel in Properties(N)"""
 
     bl_label = "BlenderUmap"
-    bl_idname = "Umap"
+    bl_idname = "VIEW3D_PT_Umap"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Umap"
@@ -125,75 +139,62 @@ class VIEW_PT_Import(bpy.types.Panel):
 
         col = layout.column(align=True)
 
+        if os.path.isfile(os.path.join(bpy.context.scene.exportPath, "config.json")):
+            col.operator("umap.load_configs", icon="FILE_REFRESH", text="Reload Last Used Config")
+
         col.label(text="Exporter Settings:")
-
-        col.prop(context.scene, "Game_Path", text="Game Path")
-
-        col.prop(context.scene, "aeskey", text="Main AES Key")
-
-        col.prop(context.scene, "exportPath", text="Export Path")
-
-
+        col.prop(context.scene, "Game_Path")
+        col.prop(context.scene, "aeskey")
+        col.prop(context.scene, "exportPath")
         col.label(text="Dynamic Keys:")
-        col.template_list(
-            "DPKLIST",
-            "DPK_List",
+
+        row = col.row(align=True)
+
+        col2 = row.column(align=True)
+        col2.template_list(
+            "VIEW3D_UL_DPKLIST",
+            "VIEW3D_UL_dpklist",
             context.scene,
             "dpklist",
             context.scene,
             "list_index",
-            rows=2,
+            rows=3,
         )
+        row.separator()
 
-        row = col.row()
-        row.operator("dpklist.new_item", text="+")
-        row.operator("dpklist.delete_item", text="-")
+        col3 = row.column(align=True)
+        col3.operator("dpklist.new_item", icon='ADD', text="")
+        col3.operator("dpklist.delete_item", icon='REMOVE', text="")
+        col3.separator()
+        col3.menu("VIEW3D_MT_AdditionalOptions", icon='DOWNARROW_HLT', text="")
+        col.separator()
 
         if context.scene.list_index >= 0 and context.scene.dpklist:
             item = context.scene.dpklist[context.scene.list_index]
             col.prop(item, "pakname")
             col.prop(item, "daeskey")
+            col.prop(item, "guid")
+            col.separator()
 
-        col.prop(context.scene, "package", text="Package")
+        col.prop(context.scene, "package")
+        col.prop(context.scene, "ue4_versions") # TODO custom ue4 versions
 
-        col.prop(context.scene, "ue4_versions")
-
-        col.prop(context.scene, "readmats", text="Read Materials")
-
-        col.prop(
-            context.scene, "bExportToDDSWhenPossible", text="Export DDS When Possible"
-        )
-
-        col.prop(
-            context.scene,
-            "bExportBuildingFoundations",
-            text="Export Building Foundations",
-        )
-
-        col.prop(context.scene, "bdumpassets", text="Dump Assets")
-
-        col.prop(context.scene, "ObjectCacheSize", text="Object Cache Size")
-
-        col.prop(context.scene, "bUseUModel", text="Use UModel")
-
+        col.prop(context.scene, "readmats")
+        col.prop(context.scene, "bExportToDDSWhenPossible")
+        col.prop(context.scene,"bExportBuildingFoundations")
+        col.prop(context.scene, "bdumpassets")
+        col.prop(context.scene, "ObjectCacheSize")
+        col.prop(context.scene, "bUseUModel")
         if context.scene.bUseUModel == True:
-            col.prop(context.scene, "additionalargs", text="UModel Additional Args")
+            col.prop(context.scene, "additionalargs")
+        col.separator()
 
         col.label(text="Importer Settings:")
-
         col.prop(context.scene, "reuse_maps", text="Reuse Maps")
-
         col.prop(context.scene, "reuse_mesh", text="Reuse Meshes")
-
-        col.prop(
-            context.scene, "use_cube_as_fallback", text="Use Cube as Fallback Mesh"
-        )
+        col.prop(context.scene, "use_cube_as_fallback")
 
         col.operator("umap.import", text="Import", icon="IMPORT")
-
-        col.operator(
-            "umap.fillfortnitekeys", text="Fill Fortnite AES Keys", icon="FILE_FONT"
-        )
 
 
 class VIEW_PT_UmapOperator(bpy.types.Operator):
@@ -245,6 +246,7 @@ class VIEW_PT_UmapOperator(bpy.types.Operator):
                 f.write(downfile.read(downfile.length))
         return True
 
+
 class ListItem(bpy.types.PropertyGroup):
     pakname: StringProperty(
         name="Pak Name", description="Name of the Pak file.", default=""
@@ -252,26 +254,33 @@ class ListItem(bpy.types.PropertyGroup):
     daeskey: StringProperty(
         name="AES Key", description="AES key for the Pak file.", default=""
     )
+    guid: StringProperty(
+        name="Encryption Guid", description= "Encryption Guid for the Pak file.", default="", maxlen=32)
 
 
-class DPKLIST(bpy.types.UIList):
+class VIEW3D_UL_DPKLIST(bpy.types.UIList):
     """Dynamic Pak AES key List"""
 
     def draw_item(
         self, context, layout, data, item, icon, active_data, active_propname, index
     ):
         if self.layout_type in {"DEFAULT", "COMPACT"}:
-            layout.label(text=f"{item.pakname}:{item.daeskey}")
+            if item.pakname == "":
+                layout.label(text=f"{item.guid}:{item.daeskey}")
+            else:
+                layout.label(text=f"{item.pakname}:{item.daeskey}")
 
         elif self.layout_type in {"GRID"}:
             layout.alignment = "CENTER"
-            layout.label(text=item.pakname)
-
+            if item.pakname == "":
+                layout.label(text=f"{item.guid}")
+            else:
+                layout.label(text=item.pakname)
 
 class Fortnite(bpy.types.Operator):
     bl_idname = "umap.fillfortnitekeys"
     bl_label = "Fill Fortnite Keys"
-    bl_description = "Description that shows in blender tooltips"
+    bl_description = "Automatically fill AES Key/s for Latest Fortnite version"
     bl_options = {"UNDO"}
 
     @classmethod
@@ -283,10 +292,22 @@ class Fortnite(bpy.types.Operator):
             "User-Agent": "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.3"
         }
 
-        req = Request(url="https://benbotfn.tk/api/v1/aes", headers=headers)
+        req = Request(url="https://fortnite-api.com/v2/aes", headers=headers)
         r = urlopen(req)
-        data = json.loads(r.read().decode(r.info().get_param("charset") or "utf-8"))
-        bpy.context.scene.aeskey = data["mainKey"]
+
+        if r.status != 200:
+            self.report({"ERROR"}, "API returned {r.status} status code")
+            return {"CANCELLED"}
+
+        raw_data = r.read().decode(r.info().get_param("charset") or "utf-8")
+        try:
+            data = json.loads(raw_data)["data"]
+        except Exception as e:
+            self.report({'ERROR'}, "Error Loading JSON \n{e}")
+            return {"CANCELLED"}
+
+        main_key = data["mainKey"]
+        bpy.context.scene.aeskey = main_key if main_key.startswith("0x") else f"0x{main_key}"
 
         dpklist = context.scene.dpklist
         context.scene.list_index = len(dpklist)
@@ -296,12 +317,15 @@ class Fortnite(bpy.types.Operator):
             dpklist.remove(index)
             index = index - 1
 
-        for PakPath, AESKey in data["dynamicKeys"].items():
+        context.scene.list_index = 0
+        for x in data["dynamicKeys"]:
+            PakPath, Guid, AESKey = x.values()
             Pakname = os.path.basename(PakPath)
             context.scene.dpklist.add()
             item = context.scene.dpklist[index]
             item.pakname = Pakname
-            item.daeskey = AESKey
+            item.guid = Guid
+            item.daeskey = AESKey if AESKey.startswith("0x") else "0x" + AESKey
             index = index + 1
 
         return {"FINISHED"}
@@ -327,7 +351,7 @@ class LIST_OT_DeleteItem(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.scene.dpklist
+        return len(context.scene.dpklist) > 0
 
     def execute(self, context):
         dpklist = context.scene.dpklist
@@ -337,12 +361,26 @@ class LIST_OT_DeleteItem(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class LOAD_Configs(bpy.types.Operator):
+    bl_label = "Load Config from File"
+    bl_idname = "umap.load_configs"
+    bl_description = "Load Configs from File"
+
+    def execute(self, context: 'Context') -> typing.Union[typing.Set[str], typing.Set[int]]:
+        try:
+            Config().load()
+        except Exception as e:
+            self.report({"ERROR"}, str(e))
+            return {"CANCELLED"}
+        return {"FINISHED"}
+
+
 def register():
     # bpy.utils.register_class(VIEW_PT_UmapOperator)
     # bpy.utils.register_class(VIEW_PT_Import)
 
     bpy.types.Scene.dpklist = CollectionProperty(type=ListItem)
-    bpy.types.Scene.list_index = IntProperty(name="Index for dpklist", default=0)
+    bpy.types.Scene.list_index = IntProperty(name="", default=0)
 
     bpy.types.Scene.Game_Path = StringProperty(
         name="Game Path",
@@ -442,7 +480,6 @@ def unregister():
     # bpy.utils.unregister_class(VIEW_PT_UmapOperator)
     # bpy.utils.unregister_class(VIEW_PT_Import)
 
-    # idk why we unregister
     sc = bpy.types.Scene
     del sc.Game_Path
     del sc.aeskey

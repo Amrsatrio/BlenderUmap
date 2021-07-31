@@ -13,7 +13,7 @@
 
 bl_info = {
     "name" : "BlenderUmap",
-    "author" : "Amrsatrio, MountainFlash",
+    "author" : "Amrsatrio, MountainFlash (MinshuG)",
     "description" : "",
     "blender" : (2, 80, 0),
     "version" : (0, 0, 1),
