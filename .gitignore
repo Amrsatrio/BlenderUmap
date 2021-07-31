@@ -4,3 +4,5 @@
 /run
 /.unused
 *.pyc
+addon/umap.py
+BlenderUmap.log
