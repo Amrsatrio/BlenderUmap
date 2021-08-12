@@ -4,6 +4,7 @@ from bpy.props import StringProperty, IntProperty, CollectionProperty, BoolPrope
 import json
 import os
 from urllib.request import urlopen, Request
+import re
 
 from bpy.types import Context
 from .config import Config
@@ -137,12 +138,12 @@ class VIEW3D_PT_Import(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
 
-        col = layout.column(align=True)
+        col = layout.column(align=True, heading="Exporter Settings:")
 
         if os.path.isfile(os.path.join(bpy.context.scene.exportPath, "config.json")):
             col.operator("umap.load_configs", icon="FILE_REFRESH", text="Reload Last Used Config")
 
-        col.label(text="Exporter Settings:")
+        # col.label(text="Exporter Settings:")
         col.prop(context.scene, "Game_Path")
         col.prop(context.scene, "aeskey")
         col.prop(context.scene, "exportPath")
@@ -177,6 +178,12 @@ class VIEW3D_PT_Import(bpy.types.Panel):
             col.separator()
 
         col.prop(context.scene, "package")
+
+        if re.search(r"/Plugins/GameFeatures/.*/Content/", context.scene.package):
+            col.label(text="Provided package path might not work.", icon="ERROR")
+            col.operator("umap.convert_path", icon="FILE_REFRESH", text="Convert Path")
+            col.separator()
+
         col.prop(context.scene, "ue4_versions") # TODO custom ue4 versions
 
         col.prop(context.scene, "readmats")
@@ -189,7 +196,8 @@ class VIEW3D_PT_Import(bpy.types.Panel):
             col.prop(context.scene, "additionalargs")
         col.separator()
 
-        col.label(text="Importer Settings:")
+        col = col.column(align=True, heading="Importer Settings:")
+        # col.label(text="Importer Settings:")
         col.prop(context.scene, "reuse_maps", text="Reuse Maps")
         col.prop(context.scene, "reuse_mesh", text="Reuse Meshes")
         col.prop(context.scene, "use_cube_as_fallback")
@@ -373,6 +381,34 @@ class LOAD_Configs(bpy.types.Operator):
             self.report({"ERROR"}, str(e))
             return {"CANCELLED"}
         return {"FINISHED"}
+
+# convert path
+class CONVERT_Path(bpy.types.Operator):
+    bl_label = "Convert Path"
+    bl_idname = "umap.convert_path"
+    bl_description = "Convert Path to BlenderUmap Supported format."
+
+    def execute(self, context: 'Context'):
+        """
+        from GameName/Plugins/GameFeatures/GameFeatureName/Content/Maps/MapName.umap
+        to /GameFeatureName/Maps/MapName
+        """
+        path = context.scene.package.split("/")
+        path = path[3:]
+        b_content = True
+        fixed_path = [""]
+        for x in path:
+            if x == "Content" and b_content:
+                b_content = False
+                continue
+            if x.endswith(".umap"):
+                x = x[:-5]
+            fixed_path.append(x)
+
+        context.scene.package = "/".join(fixed_path)
+
+        return {"FINISHED"}
+
 
 
 def register():
