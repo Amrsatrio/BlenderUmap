@@ -22,8 +22,8 @@ def from_list(x: Any) -> List[T]:
         d = {}
         if a.guid != "":
             d["Guid"] = a.guid
-        else:
-            d["Pakname"] = a.pakname
+        if a.pakname != "":
+            d["FileName"] = a.pakname
         d["Key"] = a.daeskey
         l.append(d)
     return l
