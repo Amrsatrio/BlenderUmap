@@ -37,8 +37,6 @@ This tool was made to fulfill my curiosity about exporting a Fortnite building i
 * `bReadMaterials`: Export materials. Materials are experimental! Not all imported materials will be perfect. **Min. 16GB of RAM recommended!**
 * `bExportToDDSWhenPossible`: Prefer PNG to DDS? Set this to `false` and textures will always be exported as PNG. **Warning: Export times will significantly increase when this is set to `false`!** Defaults to enabled.
 * `bExportBuildingFoundations`: You can turn off exporting sub-buildings in large POIs if you want to quickly port the base POI structures, by setting this to `false`. Defaults to enabled.
-* `bUseUModel`: Run UModel within the exporting process to export meshes, materials, and textures.
-* `UModelAdditionalArgs`: Additional command line args when starting UModel.
 * **`ExportPackage`: The .umap you want to export.** Accepts these path formats:
   * `/Game/Maps/MapName` (package path)
   * `/Game/Maps/MapName.MapName` (object path)

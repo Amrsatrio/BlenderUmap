@@ -5,7 +5,7 @@ plugins {
 }
 
 group 'com.tb24'
-version '0.4.1'
+version '0.4.2'
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
@@ -37,7 +37,6 @@ jar {
 repositories {
 	google()
 	mavenCentral()
-	maven { url 'https://dl.bintray.com/fungamesleaks/mavenRepo' }
 	maven { url 'https://jitpack.io' }
 }
 
@@ -49,7 +48,7 @@ dependencies {
 	implementation 'com.google.code.gson:gson:2.8.7'
 	implementation 'com.squareup.okhttp3:okhttp:3.14.9'
 	implementation 'me.fungames:JFortniteParse:+'
-	implementation 'org.slf4j:slf4j-api:1.7.31'
+	implementation 'org.slf4j:slf4j-api:1.7.32'
 	testImplementation 'junit:junit:4.13.2'
 }
 
