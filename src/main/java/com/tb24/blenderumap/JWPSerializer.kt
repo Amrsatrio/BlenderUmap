@@ -4,8 +4,6 @@
 package com.tb24.blenderumap
 
 import com.google.gson.*
-import me.fungames.jfortniteparse.ue4.assets.IoPackage
-import me.fungames.jfortniteparse.ue4.assets.PakPackage
 import me.fungames.jfortniteparse.ue4.assets.UProperty
 import me.fungames.jfortniteparse.ue4.assets.exports.UCurveTable
 import me.fungames.jfortniteparse.ue4.assets.exports.UDataTable
@@ -87,19 +85,11 @@ object JWPSerializer {
 			if (src.isImport()) {
 				val pkg = src.owner
 				val arr = JsonArray().apply {
-					if (pkg is PakPackage) {
-						var current = pkg.run { src.getResource() }
-						while (current != null) {
-							add(current.objectName.text)
-							current = pkg.run { current!!.outerIndex.getResource() }
-						}
-					} else {
-						val initial = (pkg as IoPackage).resolveObjectIndex(pkg.importMap[src.toImport()])
-						var current = initial
-						while (current != null) {
-							add(current.getName().text)
-							current = current.getOuter()
-						}
+					val initial = pkg?.findObjectMinimal(src)
+					var current = initial
+					while (current != null) {
+						add(current.getName().text)
+						current = current.getOuter()
 					}
 				}
 				if (arr.size() > 0) arr else null

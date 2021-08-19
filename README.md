@@ -35,19 +35,11 @@ This tool was made to fulfill my curiosity about exporting a Fortnite building i
 * `bDumpAssets`: Save assets as JSON format, useful for debugging.
 * `ObjectCacheSize`: Configure the object loader cache size to tune the performance, or set to 0 to disable. Defaults to 100.
 * `bReadMaterials`: Export materials. Materials are experimental! Not all imported materials will be perfect. **Min. 16GB of RAM recommended!**
-* `bExportToDDSWhenPossible`: Prefer PNG over DDS? Set this to `false` and textures will always be exported as PNG. **Warning: Export times will significantly increase when this is set to `false`!** Defaults to enabled.
+* `bExportToDDSWhenPossible`: Prefer PNG to DDS? Set this to `false` and textures will always be exported as PNG. **Warning: Export times will significantly increase when this is set to `false`!** Defaults to enabled.
 * `bExportBuildingFoundations`: You can turn off exporting sub-buildings in large POIs if you want to quickly port the base POI structures, by setting this to `false`. Defaults to enabled.
 * `bUseUModel`: Run UModel within the exporting process to export meshes, materials, and textures.
 * `UModelAdditionalArgs`: Additional command line args when starting UModel.
 * **`ExportPackage`: The .umap you want to export.** Accepts these path formats:
-  * `/Game/Maps/MapName.umap`
-  * `GameName/Content/Maps/MapName.umap` (file path)
-  
-  These are accepted for games with I/O store (.utoc and .ucas):
   * `/Game/Maps/MapName` (package path)
   * `/Game/Maps/MapName.MapName` (object path)
-  * `GameName/Content/Maps/MapName` (file path without extension)
-  
-  For assets in Fortnite game feature plugins:
-  * For example the full file path is `FortniteGame/Plugins/GameFeatures/GameFeatureName/Content/Maps/MapName.umap`
-  * You have to convert it into `/GameFeatureName/Maps/MapName` which is the package path that is supported by this tool.
+  * `GameName/Content/Maps/MapName.umap` (file path)

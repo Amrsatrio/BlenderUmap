@@ -2,13 +2,16 @@
   "_Documentation": "https://github.com/Amrsatrio/BlenderUmap/blob/master/README.md",
   "PaksDirectory": "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks",
   "UEVersion": "GAME_UE4_LATEST",
-  "EncryptionKeys": [],
+  "EncryptionKeys": [
+    {
+      "Guid": "00000000000000000000000000000000",
+      "Key": "0x0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
   "bDumpAssets": false,
   "ObjectCacheSize": 100,
   "bReadMaterials": true,
   "bExportToDDSWhenPossible": true,
   "bExportBuildingFoundations": true,
-  "bUseUModel": false,
-  "UModelAdditionalArgs": "",
-  "ExportPackage": "/Game/Content/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_BoatRental.umap"
+  "ExportPackage": "/Game/Athena/Apollo/Maps/Buildings/3x3/Apollo_3x3_BoatRental"
 }

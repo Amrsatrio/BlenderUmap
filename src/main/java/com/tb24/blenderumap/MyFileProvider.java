@@ -44,7 +44,7 @@ public class MyFileProvider extends DefaultFileProvider {
 			cache = null;
 		}
 
-		setIoStoreTocReadOptions(0);
+		//setIoStoreTocReadOptions(0); Let the long package paths be loaded so long plugin paths can be resolved
 
 		Map<FGuid, byte[]> keysToSubmit = new HashMap<>();
 		for (EncryptionKey entry : encryptionKeys) {
@@ -67,7 +67,7 @@ public class MyFileProvider extends DefaultFileProvider {
 	@Override
 	public Package loadGameFile(@NotNull GameFile file) {
 		return MapsKt.getOrPut(loaded, file, () -> {
-			LOGGER.info("Loading " + file);
+			//LOGGER.info("Loading " + file);
 			Package loadedPkg = super.loadGameFile(file);
 
 			if (loadedPkg != null && bDumpAssets) {

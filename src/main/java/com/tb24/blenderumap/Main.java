@@ -3,43 +3,14 @@
  */
 package com.tb24.blenderumap;
 
-import com.google.gson.FieldNamingPolicy;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
+import com.google.gson.*;
 import com.google.gson.reflect.TypeToken;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-
-import javax.imageio.ImageIO;
-
 import kotlin.Lazy;
 import kotlin.io.FilesKt;
 import kotlin.text.StringsKt;
 import me.fungames.jfortniteparse.fort.exports.BuildingTextureData;
 import me.fungames.jfortniteparse.ue4.assets.Package;
-import me.fungames.jfortniteparse.ue4.assets.exports.UBlueprintGeneratedClass;
-import me.fungames.jfortniteparse.ue4.assets.exports.ULevel;
-import me.fungames.jfortniteparse.ue4.assets.exports.UObject;
-import me.fungames.jfortniteparse.ue4.assets.exports.UStaticMesh;
-import me.fungames.jfortniteparse.ue4.assets.exports.UStruct;
-import me.fungames.jfortniteparse.ue4.assets.exports.UWorld;
+import me.fungames.jfortniteparse.ue4.assets.exports.*;
 import me.fungames.jfortniteparse.ue4.assets.exports.mats.UMaterialInstance;
 import me.fungames.jfortniteparse.ue4.assets.exports.mats.UMaterialInstance.FTextureParameterValue;
 import me.fungames.jfortniteparse.ue4.assets.exports.mats.UMaterialInterface;
@@ -52,14 +23,22 @@ import me.fungames.jfortniteparse.ue4.assets.objects.meshes.FStaticMaterial;
 import me.fungames.jfortniteparse.ue4.converters.meshes.StaticMeshesKt;
 import me.fungames.jfortniteparse.ue4.converters.meshes.psk.ExportStaticMeshKt;
 import me.fungames.jfortniteparse.ue4.converters.textures.TexturesKt;
+import me.fungames.jfortniteparse.ue4.objects.core.math.FQuat;
 import me.fungames.jfortniteparse.ue4.objects.core.math.FRotator;
 import me.fungames.jfortniteparse.ue4.objects.core.math.FVector;
 import me.fungames.jfortniteparse.ue4.objects.core.misc.FGuid;
 import me.fungames.jfortniteparse.ue4.objects.uobject.FName;
 import me.fungames.jfortniteparse.ue4.objects.uobject.FSoftObjectPath;
-import me.fungames.jfortniteparse.ue4.versions.GameKt;
 import me.fungames.jfortniteparse.ue4.versions.Ue4Version;
-import me.fungames.jfortniteparse.util.DataTypeConverterKt;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.imageio.ImageIO;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.*;
 
 import static com.tb24.blenderumap.AssetUtilsKt.getProp;
 import static com.tb24.blenderumap.AssetUtilsKt.getProps;
@@ -113,19 +92,12 @@ public class Main {
 			Package pkg = exportAndProduceProcessed(config.ExportPackage);
 			if (pkg == null) return;
 
-			if (!exportQueue.isEmpty()) {
-				exportUmodel();
-			}
-
 			File file = new File("processed.json");
 			LOGGER.info("Writing to " + file.getAbsolutePath());
 
 			try (FileWriter writer = new FileWriter(file)) {
 //				GSON.toJson(components, writer);
 				String pkgName = provider.compactFilePath(pkg.getName());
-				if (pkgName.endsWith(".umap")) {
-					pkgName = pkgName.substring(0, pkgName.lastIndexOf('.'));
-				}
 				GSON.toJson(pkgName, writer);
 			}
 
@@ -133,8 +105,10 @@ public class Main {
 		} catch (Exception e) {
 			if (e instanceof MainException) {
 				LOGGER.info(e.getMessage());
+			} else if (e instanceof JsonSyntaxException) {
+				LOGGER.error("Please check your config.json for syntax errors.\n{}", e.getCause().getMessage());
 			} else {
-				LOGGER.error("An unexpected error has occurred, please report", e);
+				LOGGER.error("An unexpected error has occurred, please check your config.json or report to the author", e);
 			}
 
 			System.exit(1);
@@ -160,16 +134,13 @@ public class Main {
 	}
 
 	private static Package exportAndProduceProcessed(String path) {
-		if (path.endsWith(".umap") && provider.mountedIoStoreReaders().size() > 0) {
-			path = path.substring(0, path.lastIndexOf('.'));
-		}
 		UObject mainObject = provider.loadObject(path);
 		if (mainObject == null) {
-			LOGGER.info("Object not found");
+			LOGGER.info("Not found: " + path);
 			return null;
 		}
 		if (!(mainObject instanceof UWorld)) {
-			LOGGER.info(mainObject.getPathName() + " is not a UWorld, won't try to export");
+			LOGGER.info(mainObject.getFullName() + " is not a World, won't try to export");
 			return null;
 		}
 		UWorld world = (UWorld) mainObject;
@@ -217,11 +188,7 @@ public class Main {
 				UStaticMesh meshExport = mesh.getValue();
 
 				if (meshExport != null) {
-					if (config.bUseUModel) {
-						exportQueue.add(mesh);
-					} else {
-						ExportStaticMeshKt.export(StaticMeshesKt.convertMesh(meshExport), false, false).writeToDir(getExportDir(meshExport));
-					}
+					ExportStaticMeshKt.export(StaticMeshesKt.convertMesh(meshExport), false, false).writeToDir(getExportDir(meshExport));
 
 					if (config.bReadMaterials) {
 						List<FStaticMaterial> staticMaterials = meshExport.StaticMaterials;
@@ -278,8 +245,7 @@ public class Main {
 
 			if (config.bExportBuildingFoundations && additionalWorlds != null) {
 				for (FSoftObjectPath additionalWorld : additionalWorlds) {
-					String text = additionalWorld.getAssetPathName().getText();
-					Package cpkg = exportAndProduceProcessed(StringsKt.substringBeforeLast(text, '.', text) + ".umap");
+					Package cpkg = exportAndProduceProcessed(additionalWorld.getAssetPathName().getText());
 					children.add(cpkg != null ? provider.compactFilePath(cpkg.getName()) : null);
 				}
 			}
@@ -294,11 +260,33 @@ public class Main {
 			comp.add(children);
 		}
 
+		/*if (config.bExportBuildingFoundations) {
+			for (Lazy<UObject> streamingLevelLazy : world.getStreamingLevels()) {
+				UObject streamingLevel = streamingLevelLazy.getValue();
+				if (streamingLevel == null) continue;
+
+				JsonArray children = new JsonArray();
+				Package cpkg = exportAndProduceProcessed(getProp(streamingLevel, "WorldAsset", FSoftObjectPath.class).getAssetPathName().getText());
+				children.add(cpkg != null ? provider.compactFilePath(cpkg.getName()) : null);
+
+				FTransform transform = getProp(streamingLevel, "LevelTransform", FTransform.class);
+
+				JsonArray comp = new JsonArray();
+				comp.add(JsonNull.INSTANCE); // GUID
+				comp.add(streamingLevel.getName());
+				comp.add(JsonNull.INSTANCE); // mesh path
+				comp.add(JsonNull.INSTANCE); // materials
+				comp.add(JsonNull.INSTANCE); // texture data
+				comp.add(vector(transform.getTranslation())); // location
+				comp.add(quat(transform.getRotation())); // rotation
+				comp.add(vector(transform.getScale3D())); // scale
+				comp.add(children);
+				comps.add(comp);
+			}
+		}*/
+
 		Package pkg = world.getOwner();
 		String pkgName = provider.compactFilePath(pkg.getName());
-		if (pkgName.endsWith(".umap")) {
-			pkgName = pkgName.substring(0, pkgName.lastIndexOf('.'));
-		}
 		File file = new File(MyFileProvider.JSONS_FOLDER, pkgName + ".processed.json");
 		file.getParentFile().mkdirs();
 		LOGGER.info("Writing to {}", file.getAbsolutePath());
@@ -322,11 +310,6 @@ public class Main {
 	}
 
 	private static void exportTexture(Lazy<? extends UTexture> index) {
-		if (config.bUseUModel) {
-			exportQueue.add(index);
-			return;
-		}
-
 		try {
 			UTexture2D texture = index.getValue() instanceof UTexture2D ? (UTexture2D) index.getValue() : null;
 			if (texture == null) {
@@ -387,55 +370,6 @@ public class Main {
 		return StringsKt.substringAfterLast(pkgPath, '/', pkgPath).equals(objectName) ? pkgPath : pkgPath + '/' + objectName;
 	}
 
-	private static void exportUmodel() throws InterruptedException, IOException {
-		try (PrintWriter pw = new PrintWriter("umodel_cmd.txt")) {
-			pw.println("-path=\"" + config.PaksDirectory + '\"');
-			pw.println("-game=ue4." + GameKt.GAME_UE4_GET_MINOR(config.UEVersion.getGame()));
-
-			if (config.EncryptionKeys.size() > 0) { // TODO run umodel multiple times if there's more than one encryption key
-				pw.println("-aes=0x" + DataTypeConverterKt.printHexBinary(config.EncryptionKeys.get(0).Key));
-			}
-
-			pw.println("-out=\"" + new File("").getAbsolutePath() + '\"');
-
-			if (!isEmpty(config.UModelAdditionalArgs)) {
-				pw.println(config.UModelAdditionalArgs);
-			}
-
-			boolean bFirst = true;
-
-			for (Lazy<? extends UObject> export : exportQueue) {
-				if (export == null) continue;
-
-				UObject object = export.getValue();
-				String packagePath = provider.compactFilePath(object.getOwner().getName());
-				String objectName = object.getName();
-
-				if (bFirst) {
-					bFirst = false;
-					pw.println("-export");
-					pw.println(packagePath);
-					pw.println(objectName);
-				} else {
-					pw.println("-pkg=" + packagePath);
-					pw.println("-obj=" + objectName);
-				}
-			}
-		}
-
-		ProcessBuilder pb = new ProcessBuilder(Arrays.asList("umodel", "@umodel_cmd.txt"));
-		pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-		pb.redirectError(ProcessBuilder.Redirect.INHERIT);
-		LOGGER.info("Starting UModel process");
-		int exitCode = pb.start().waitFor();
-
-		if (exitCode == 0) {
-			exportQueue.clear();
-		} else {
-			LOGGER.warn("UModel returned exit code " + exitCode + ", some assets might weren't exported successfully");
-		}
-	}
-
 	private static JsonArray vector(FVector vector) {
 		if (vector == null) return null;
 		JsonArray array = new JsonArray(3);
@@ -454,8 +388,14 @@ public class Main {
 		return array;
 	}
 
-	private static boolean isEmpty(String s) {
-		return s == null || s.isEmpty();
+	private static JsonArray quat(FQuat quat) {
+		if (quat == null) return null;
+		JsonArray array = new JsonArray(4);
+		array.add(quat.getX());
+		array.add(quat.getY());
+		array.add(quat.getZ());
+		array.add(quat.getW());
+		return array;
 	}
 
 	private static class Mat {
@@ -572,8 +512,6 @@ public class Main {
 		public boolean bReadMaterials = true;
 		public boolean bExportToDDSWhenPossible = true;
 		public boolean bExportBuildingFoundations = true;
-		public boolean bUseUModel = false;
-		public String UModelAdditionalArgs = "";
 		public String ExportPackage;
 	}
 
