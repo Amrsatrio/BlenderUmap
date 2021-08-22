@@ -2,10 +2,11 @@ plugins {
 	id 'application'
 	id 'java'
 	id 'org.jetbrains.kotlin.jvm' version '1.5.20'
+	id 'com.github.johnrengelman.shadow' version '7.0.0'
 }
 
 group 'com.tb24'
-version '0.4.2'
+version '0.4.3'
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
@@ -20,17 +21,7 @@ application {
 
 jar {
 	manifest {
-		attributes(
-				'Main-Class': javaMainClass
-		)
-	}
-
-	from {
-		configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
-	} {
-		exclude 'META-INF/*.SF'
-		exclude 'META-INF/*.DSA'
-		exclude 'META-INF/*.RSA'
+		attributes 'Main-Class': javaMainClass
 	}
 }
 
@@ -58,4 +49,25 @@ compileKotlin {
 
 compileTestKotlin {
 	kotlinOptions.jvmTarget = '1.8'
+}
+
+shadowJar {
+	baseName = project.name
+	classifier = ''
+	archiveVersion = ''
+	exclude "**/*.kotlin_builtins"
+	exclude "**/*.kotlin_metadata"
+	exclude "**/*.kotlin_module"
+	exclude 'META-INF/maven/**'
+	exclude '**/DEPENDENCIES'
+	exclude '**/LGPL2.1'
+	exclude '**/LICENSE'
+	exclude '**/LICENSE.txt'
+	exclude '**/NOTICE'
+	exclude '**/NOTICE.txt'
+}
+
+tasks.withType(AbstractArchiveTask) {
+	preserveFileTimestamps = false
+	reproducibleFileOrder = true
 }
