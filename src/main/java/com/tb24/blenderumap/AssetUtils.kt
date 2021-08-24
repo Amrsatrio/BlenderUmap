@@ -1,5 +1,6 @@
 package com.tb24.blenderumap
 
+import me.fungames.jfortniteparse.ue4.assets.exports.UObject
 import me.fungames.jfortniteparse.ue4.assets.objects.FPropertyTag
 import me.fungames.jfortniteparse.ue4.assets.objects.IPropertyHolder
 import java.lang.reflect.ParameterizedType
@@ -36,3 +37,16 @@ fun <T> IPropertyHolder.getProps(name: String, clazz: Class<T>): Array<T?> {
 }
 
 inline fun <reified T> IPropertyHolder.getProps(name: String) = getProps(name, T::class.java)
+
+inline fun <reified T> UObject.getOrNullTraversing(name: String): T? {
+	var current = this
+	while (true) {
+		val value = current.getOrNull<T>(name)
+		if (value != null) {
+			//if (current != this) LOGGER.debug("{}.getOrNullTraversing(\"{}\") found value in {}", this.name, name, current.getPathName())
+			return value
+		}
+		current = current.template?.value ?: break
+	}
+	return null
+}

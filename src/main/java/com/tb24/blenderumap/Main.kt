@@ -10,7 +10,6 @@ import com.google.gson.reflect.TypeToken
 import com.tb24.blenderumap.JWPSerializer.GSON
 import me.fungames.jfortniteparse.fort.exports.BuildingTextureData
 import me.fungames.jfortniteparse.ue4.assets.Package
-import me.fungames.jfortniteparse.ue4.assets.exports.UBlueprintGeneratedClass
 import me.fungames.jfortniteparse.ue4.assets.exports.UObject
 import me.fungames.jfortniteparse.ue4.assets.exports.UStaticMesh
 import me.fungames.jfortniteparse.ue4.assets.exports.UWorld
@@ -40,16 +39,16 @@ import java.util.*
 import javax.imageio.ImageIO
 import kotlin.system.exitProcess
 
-private val LOGGER = LoggerFactory.getLogger("BlenderUmap")
+@JvmField val LOGGER = LoggerFactory.getLogger("BlenderUmap")
 private lateinit var config: Config
 private lateinit var provider: MyFileProvider
 private val start = System.currentTimeMillis()
 
-fun main() {
+fun main(args: Array<String>) {
 	try {
-		val configFile = File("config.json")
+		val configFile = File(args.getOrNull(0) ?: "config.json")
 		if (!configFile.exists()) {
-			LOGGER.error("config.json not found")
+			LOGGER.error(configFile.name + " not found")
 			return
 		}
 		LOGGER.info("Reading config file " + configFile.absolutePath)
@@ -121,16 +120,7 @@ private fun exportAndProduceProcessed(path: String): Package? {
 		comp.add(guid?.toString()?.lowercase() ?: UUID.randomUUID().toString().replace("-", ""))
 		comp.add(actor.name)
 
-		// region mesh
-		var staticMeshLazy = staticMeshComponent.getOrNull<Lazy<UStaticMesh>>("StaticMesh") // /Script/Engine.StaticMeshComponent:StaticMesh
-		if (staticMeshLazy == null) { // read the actor class to find the mesh
-			val actorBlueprint = actor.clazz
-			if (actorBlueprint is UBlueprintGeneratedClass) {
-				staticMeshLazy = actorBlueprint.owner!!.exports.firstNotNullOfOrNull { it.getOrNull<Lazy<UStaticMesh>>("StaticMesh") }
-			}
-		}
-		// endregion
-
+		val staticMeshLazy = staticMeshComponent.getOrNullTraversing<Lazy<UStaticMesh>>("StaticMesh") // /Script/Engine.StaticMeshComponent:StaticMesh
 		val matsObj = JsonObject()
 		val textureDataArr = JsonArray()
 		val materials = mutableListOf<Mat>()
@@ -293,8 +283,9 @@ private class Mat(var material: Lazy<UMaterialInterface>?) {
 		val material = lazy.value as? UMaterialInstance ?: return
 		material.TextureParameterValues?.forEach {
 			val name = it.ParameterInfo.Name ?: FName.NAME_None
-			if (name.text !in textureMap) {
-				textureMap[name.text] = it.ParameterValue
+			val value = it.ParameterValue
+			if (value != null && name.text !in textureMap) {
+				textureMap[name.text] = value
 			}
 		}
 		material.Parent?.let(::populateTextures)
