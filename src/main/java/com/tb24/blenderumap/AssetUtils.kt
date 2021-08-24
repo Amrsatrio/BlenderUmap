@@ -1,12 +1,12 @@
 package com.tb24.blenderumap
 
-import me.fungames.jfortniteparse.ue4.assets.exports.UObject
 import me.fungames.jfortniteparse.ue4.assets.objects.FPropertyTag
+import me.fungames.jfortniteparse.ue4.assets.objects.IPropertyHolder
 import java.lang.reflect.ParameterizedType
 import java.lang.reflect.Type
 import kotlin.math.max
 
-fun <T> getProp(properties: List<FPropertyTag>, name: String, type: Type): T? {
+fun <T> IPropertyHolder.getProp(name: String, type: Type): T? {
 	for (prop in properties) {
 		if (name == prop.name.text) {
 			val clazz = (if (type is ParameterizedType) type.rawType else type) as Class<T>
@@ -16,7 +16,10 @@ fun <T> getProp(properties: List<FPropertyTag>, name: String, type: Type): T? {
 	return null
 }
 
-fun <T> getProps(properties: List<FPropertyTag>, name: String, clazz: Class<T>): Array<T?> {
+inline fun <T> IPropertyHolder.getProp(name: String, clazz: Class<T>): T? = getProp(name, clazz as Type)
+inline fun <reified T> IPropertyHolder.getProp(name: String): T? = getProp(name, T::class.java as Type)
+
+fun <T> IPropertyHolder.getProps(name: String, clazz: Class<T>): Array<T?> {
 	val collected = mutableListOf<FPropertyTag>()
 	var maxIndex = -1
 	for (prop in properties) {
@@ -32,6 +35,4 @@ fun <T> getProps(properties: List<FPropertyTag>, name: String, clazz: Class<T>):
 	return out
 }
 
-fun <T> UObject.getProp(name: String, clazz: Class<T>) = getProp<T>(properties, name, clazz)
-fun <T> UObject.getProp(name: String, type: Type): T? = getProp(properties, name, type)
-inline fun <reified T> UObject.get(name: String): T? = getProp(name, T::class.java)
+inline fun <reified T> IPropertyHolder.getProps(name: String) = getProps(name, T::class.java)

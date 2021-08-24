@@ -1,523 +1,356 @@
 /*
  * (C) amrsatrio. All rights reserved.
  */
-package com.tb24.blenderumap;
+@file:JvmName("Main")
 
-import com.google.gson.*;
-import com.google.gson.reflect.TypeToken;
-import kotlin.Lazy;
-import kotlin.io.FilesKt;
-import kotlin.text.StringsKt;
-import me.fungames.jfortniteparse.fort.exports.BuildingTextureData;
-import me.fungames.jfortniteparse.ue4.assets.Package;
-import me.fungames.jfortniteparse.ue4.assets.exports.*;
-import me.fungames.jfortniteparse.ue4.assets.exports.mats.UMaterialInstance;
-import me.fungames.jfortniteparse.ue4.assets.exports.mats.UMaterialInstance.FTextureParameterValue;
-import me.fungames.jfortniteparse.ue4.assets.exports.mats.UMaterialInterface;
-import me.fungames.jfortniteparse.ue4.assets.exports.tex.FTexturePlatformData;
-import me.fungames.jfortniteparse.ue4.assets.exports.tex.UTexture;
-import me.fungames.jfortniteparse.ue4.assets.exports.tex.UTexture2D;
-import me.fungames.jfortniteparse.ue4.assets.mappings.TypeMappingsProvider;
-import me.fungames.jfortniteparse.ue4.assets.mappings.UsmapTypeMappingsProvider;
-import me.fungames.jfortniteparse.ue4.assets.objects.meshes.FStaticMaterial;
-import me.fungames.jfortniteparse.ue4.converters.meshes.StaticMeshesKt;
-import me.fungames.jfortniteparse.ue4.converters.meshes.psk.ExportStaticMeshKt;
-import me.fungames.jfortniteparse.ue4.converters.textures.TexturesKt;
-import me.fungames.jfortniteparse.ue4.objects.core.math.FQuat;
-import me.fungames.jfortniteparse.ue4.objects.core.math.FRotator;
-import me.fungames.jfortniteparse.ue4.objects.core.math.FVector;
-import me.fungames.jfortniteparse.ue4.objects.core.misc.FGuid;
-import me.fungames.jfortniteparse.ue4.objects.uobject.FName;
-import me.fungames.jfortniteparse.ue4.objects.uobject.FSoftObjectPath;
-import me.fungames.jfortniteparse.ue4.versions.Ue4Version;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+package com.tb24.blenderumap
 
-import javax.imageio.ImageIO;
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.util.*;
+import com.google.gson.*
+import com.google.gson.reflect.TypeToken
+import com.tb24.blenderumap.JWPSerializer.GSON
+import me.fungames.jfortniteparse.fort.exports.BuildingTextureData
+import me.fungames.jfortniteparse.ue4.assets.Package
+import me.fungames.jfortniteparse.ue4.assets.exports.UBlueprintGeneratedClass
+import me.fungames.jfortniteparse.ue4.assets.exports.UObject
+import me.fungames.jfortniteparse.ue4.assets.exports.UStaticMesh
+import me.fungames.jfortniteparse.ue4.assets.exports.UWorld
+import me.fungames.jfortniteparse.ue4.assets.exports.mats.UMaterialInstance
+import me.fungames.jfortniteparse.ue4.assets.exports.mats.UMaterialInterface
+import me.fungames.jfortniteparse.ue4.assets.exports.tex.UTexture
+import me.fungames.jfortniteparse.ue4.assets.exports.tex.UTexture2D
+import me.fungames.jfortniteparse.ue4.assets.mappings.UsmapTypeMappingsProvider
+import me.fungames.jfortniteparse.ue4.converters.meshes.convertMesh
+import me.fungames.jfortniteparse.ue4.converters.meshes.psk.export
+import me.fungames.jfortniteparse.ue4.converters.textures.getDdsFourCC
+import me.fungames.jfortniteparse.ue4.converters.textures.toBufferedImage
+import me.fungames.jfortniteparse.ue4.converters.textures.toDdsArray
+import me.fungames.jfortniteparse.ue4.objects.core.math.FQuat
+import me.fungames.jfortniteparse.ue4.objects.core.math.FRotator
+import me.fungames.jfortniteparse.ue4.objects.core.math.FVector
+import me.fungames.jfortniteparse.ue4.objects.core.misc.FGuid
+import me.fungames.jfortniteparse.ue4.objects.uobject.FName
+import me.fungames.jfortniteparse.ue4.objects.uobject.FSoftObjectPath
+import me.fungames.jfortniteparse.ue4.versions.Ue4Version
+import org.slf4j.LoggerFactory
+import java.io.File
+import java.io.FileReader
+import java.io.FileWriter
+import java.io.IOException
+import java.util.*
+import javax.imageio.ImageIO
+import kotlin.system.exitProcess
 
-import static com.tb24.blenderumap.AssetUtilsKt.getProp;
-import static com.tb24.blenderumap.AssetUtilsKt.getProps;
-import static com.tb24.blenderumap.JWPSerializer.GSON;
+private val LOGGER = LoggerFactory.getLogger("BlenderUmap")
+private lateinit var config: Config
+private lateinit var provider: MyFileProvider
+private val start = System.currentTimeMillis()
 
-@SuppressWarnings("unchecked")
-public class Main {
-	private static final Logger LOGGER = LoggerFactory.getLogger("BlenderUmap");
-	private static Config config;
-	private static MyFileProvider provider;
-	private static final Set<Lazy<? extends UObject>> exportQueue = new HashSet<>();
-	private static final long start = System.currentTimeMillis();
-
-	public static void main(String[] args) {
-		try {
-			File configFile = new File("config.json");
-
-			if (!configFile.exists()) {
-				LOGGER.error("config.json not found");
-				return;
-			}
-
-			LOGGER.info("Reading config file " + configFile.getAbsolutePath());
-
-			try (FileReader reader = new FileReader(configFile)) {
-				config = GSON.newBuilder().setFieldNamingStrategy(FieldNamingPolicy.IDENTITY).create().fromJson(reader, Config.class);
-			}
-
-			File paksDir = new File(config.PaksDirectory);
-
-			if (!paksDir.exists()) {
-				throw new MainException("Directory " + paksDir.getAbsolutePath() + " not found.");
-			}
-
-			if (config.UEVersion == null) {
-				throw new MainException("Please specify a valid UE version. Must be either of: " + Arrays.toString(Ue4Version.values()));
-			}
-
-			if (config.ExportPackage == null || config.ExportPackage.isEmpty()) {
-				throw new MainException("Please specify ExportPackage.");
-			}
-
-			provider = new MyFileProvider(paksDir, config.UEVersion, config.EncryptionKeys, config.bDumpAssets, config.ObjectCacheSize);
-			File newestUsmap = getNewestUsmap("mappings");
-			if (newestUsmap != null) {
-				TypeMappingsProvider usmap = new UsmapTypeMappingsProvider(newestUsmap);
-				usmap.reload();
-				provider.setMappingsProvider(usmap);
-			}
-
-			Package pkg = exportAndProduceProcessed(config.ExportPackage);
-			if (pkg == null) return;
-
-			File file = new File("processed.json");
-			LOGGER.info("Writing to " + file.getAbsolutePath());
-
-			try (FileWriter writer = new FileWriter(file)) {
-//				GSON.toJson(components, writer);
-				String pkgName = provider.compactFilePath(pkg.getName());
-				GSON.toJson(pkgName, writer);
-			}
-
-			LOGGER.info(String.format("All done in %,.1f sec. In the Python script, replace the line with data_dir with this line below:\n\ndata_dir = r\"%s\"", (System.currentTimeMillis() - start) / 1000.0F, new File("").getAbsolutePath()));
-		} catch (Exception e) {
-			if (e instanceof MainException) {
-				LOGGER.info(e.getMessage());
-			} else if (e instanceof JsonSyntaxException) {
-				LOGGER.error("Please check your config.json for syntax errors.\n{}", e.getCause().getMessage());
-			} else {
-				LOGGER.error("An unexpected error has occurred, please check your config.json or report to the author", e);
-			}
-
-			System.exit(1);
+fun main() {
+	try {
+		val configFile = File("config.json")
+		if (!configFile.exists()) {
+			LOGGER.error("config.json not found")
+			return
 		}
-	}
-
-	public static File getNewestUsmap(String directoryFilePath) {
-		File directory = new File(directoryFilePath);
-		File[] files = directory.listFiles();
-		long lastModifiedTime = Long.MIN_VALUE;
-		File chosenFile = null;
-
-		if (files != null) {
-			for (File file : files) {
-				if (file.isFile() && file.getName().endsWith(".usmap") && file.lastModified() > lastModifiedTime) {
-					chosenFile = file;
-					lastModifiedTime = file.lastModified();
-				}
-			}
+		LOGGER.info("Reading config file " + configFile.absolutePath)
+		config = FileReader(configFile).use { GSON.newBuilder().setFieldNamingStrategy(FieldNamingPolicy.IDENTITY).create().fromJson(it, Config::class.java) }
+		val paksDir = File(config.PaksDirectory)
+		if (!paksDir.exists()) {
+			throw MainException("Directory " + paksDir.absolutePath + " not found.")
 		}
-
-		return chosenFile;
-	}
-
-	private static Package exportAndProduceProcessed(String path) {
-		UObject mainObject = provider.loadObject(path);
-		if (mainObject == null) {
-			LOGGER.info("Not found: " + path);
-			return null;
+		if (config.UEVersion == null) {
+			throw MainException("Please specify a valid UE version. Must be either of: " + Ue4Version.values().joinToString())
 		}
-		if (!(mainObject instanceof UWorld)) {
-			LOGGER.info(mainObject.getFullName() + " is not a World, won't try to export");
-			return null;
+		if (config.ExportPackage.isNullOrEmpty()) {
+			throw MainException("Please specify ExportPackage.")
 		}
-		UWorld world = (UWorld) mainObject;
-		ULevel persistentLevel = world.getPersistentLevel().getValue();
-		JsonArray comps = new JsonArray();
-
-		for (Lazy<UObject> actorLazy : persistentLevel.getActors()) {
-			if (actorLazy == null) continue;
-			UObject actor = actorLazy.getValue();
-			if (actor.getExportType().equals("LODActor")) continue;
-
-			Lazy<UObject> staticMeshExpLazy = getProp(actor, "StaticMeshComponent", Lazy.class); // /Script/Engine.StaticMeshActor:StaticMeshComponent or /Script/FortniteGame.BuildingSMActor:StaticMeshComponent
-			if (staticMeshExpLazy == null) continue;
-			UObject staticMeshExp = staticMeshExpLazy.getValue();
-			if (staticMeshExp == null) continue;
-
-			// identifiers
-			JsonArray comp = new JsonArray();
-			comps.add(comp);
-			FGuid guid = getProp(actor, "MyGuid", FGuid.class); // /Script/FortniteGame.BuildingActor:MyGuid
-			comp.add(guid != null ? guid.toString().toLowerCase() : UUID.randomUUID().toString().replace("-", ""));
-			comp.add(actor.getName());
-
-			// region mesh
-			Lazy<UStaticMesh> mesh = getProp(staticMeshExp, "StaticMesh", Lazy.class); // /Script/Engine.StaticMeshComponent:StaticMesh
-
-			if (mesh == null) { // read the actor class to find the mesh
-				UStruct actorBlueprint = actor.getClazz();
-
-				if (actorBlueprint instanceof UBlueprintGeneratedClass) {
-					for (UObject actorExp : actorBlueprint.getOwner().getExports()) {
-						if ((mesh = getProp(actorExp, "StaticMesh", Lazy.class)) != null) {
-							break;
-						}
-					}
-				}
-			}
-			// endregion
-
-			JsonObject matsObj = new JsonObject();
-			JsonArray textureDataArr = new JsonArray();
-			List<Mat> materials = new ArrayList<>();
-
-			if (mesh != null) {
-				UStaticMesh meshExport = mesh.getValue();
-
-				if (meshExport != null) {
-					ExportStaticMeshKt.export(StaticMeshesKt.convertMesh(meshExport), false, false).writeToDir(getExportDir(meshExport));
-
-					if (config.bReadMaterials) {
-						List<FStaticMaterial> staticMaterials = meshExport.StaticMaterials;
-
-						if (staticMaterials != null) {
-							for (FStaticMaterial staticMaterial : staticMaterials) {
-								materials.add(new Mat(staticMaterial.materialInterface));
-							}
-						}
-					}
-				}
-			}
-
-			if (config.bReadMaterials /*&& actor instanceof BuildingSMActor*/) {
-				Lazy<UMaterialInterface> material = getProp(actor, "BaseMaterial", Lazy.class); // /Script/FortniteGame.BuildingSMActor:BaseMaterial
-				List<Lazy<UMaterialInterface>> overrideMaterials = getProp(staticMeshExp, "OverrideMaterials", TypeToken.getParameterized(List.class, UMaterialInterface.class).getType()); // /Script/Engine.MeshComponent:OverrideMaterials
-
-				for (Lazy<BuildingTextureData> textureDataIdx : getProps(actor.getProperties(), "TextureData", Lazy.class)) { // /Script/FortniteGame.BuildingSMActor:TextureData
-					BuildingTextureData td = textureDataIdx != null ? textureDataIdx.getValue() : null;
-
-					if (td != null) {
-						JsonArray textures = new JsonArray();
-						addToArray(textures, td.Diffuse);
-						addToArray(textures, td.Normal);
-						addToArray(textures, td.Specular);
-						JsonArray entry = new JsonArray();
-						entry.add(pkgIndexToDirPath(textureDataIdx));
-						entry.add(textures);
-						textureDataArr.add(entry);
-
-						if (td.OverrideMaterial != null) {
-							material = td.OverrideMaterial;
-						}
-					} else {
-						textureDataArr.add((JsonElement) null);
-					}
-				}
-
-				for (int i = 0; i < materials.size(); i++) {
-					Mat mat = materials.get(i);
-
-					if (material != null) {
-						mat.name = overrideMaterials != null && i < overrideMaterials.size() && overrideMaterials.get(i) != null ? overrideMaterials.get(i) : material;
-					}
-
-					mat.populateTextures();
-					mat.addToObj(matsObj);
-				}
-			}
-
-			// region additional worlds
-			JsonArray children = new JsonArray();
-			List<FSoftObjectPath> additionalWorlds = getProp(actor, "AdditionalWorlds", TypeToken.getParameterized(List.class, FSoftObjectPath.class).getType()); // /Script/FortniteGame.BuildingFoundation:AdditionalWorlds
-
-			if (config.bExportBuildingFoundations && additionalWorlds != null) {
-				for (FSoftObjectPath additionalWorld : additionalWorlds) {
-					Package cpkg = exportAndProduceProcessed(additionalWorld.getAssetPathName().getText());
-					children.add(cpkg != null ? provider.compactFilePath(cpkg.getName()) : null);
-				}
-			}
-			// endregion
-
-			comp.add(pkgIndexToDirPath(mesh));
-			comp.add(matsObj);
-			comp.add(textureDataArr);
-			comp.add(vector(getProp(staticMeshExp, "RelativeLocation", FVector.class))); // /Script/Engine.SceneComponent:RelativeLocation
-			comp.add(rotator(getProp(staticMeshExp, "RelativeRotation", FRotator.class))); // /Script/Engine.SceneComponent:RelativeRotation
-			comp.add(vector(getProp(staticMeshExp, "RelativeScale3D", FVector.class))); // /Script/Engine.SceneComponent:RelativeScale3D
-			comp.add(children);
+		provider = MyFileProvider(paksDir, config.UEVersion, config.EncryptionKeys, config.bDumpAssets, config.ObjectCacheSize)
+		getNewestUsmap("mappings")?.let {
+			provider.mappingsProvider = UsmapTypeMappingsProvider(it).apply { reload() }
 		}
-
-		/*if (config.bExportBuildingFoundations) {
-			for (Lazy<UObject> streamingLevelLazy : world.getStreamingLevels()) {
-				UObject streamingLevel = streamingLevelLazy.getValue();
-				if (streamingLevel == null) continue;
-
-				JsonArray children = new JsonArray();
-				Package cpkg = exportAndProduceProcessed(getProp(streamingLevel, "WorldAsset", FSoftObjectPath.class).getAssetPathName().getText());
-				children.add(cpkg != null ? provider.compactFilePath(cpkg.getName()) : null);
-
-				FTransform transform = getProp(streamingLevel, "LevelTransform", FTransform.class);
-
-				JsonArray comp = new JsonArray();
-				comp.add(JsonNull.INSTANCE); // GUID
-				comp.add(streamingLevel.getName());
-				comp.add(JsonNull.INSTANCE); // mesh path
-				comp.add(JsonNull.INSTANCE); // materials
-				comp.add(JsonNull.INSTANCE); // texture data
-				comp.add(vector(transform.getTranslation())); // location
-				comp.add(quat(transform.getRotation())); // rotation
-				comp.add(vector(transform.getScale3D())); // scale
-				comp.add(children);
-				comps.add(comp);
-			}
-		}*/
-
-		Package pkg = world.getOwner();
-		String pkgName = provider.compactFilePath(pkg.getName());
-		File file = new File(MyFileProvider.JSONS_FOLDER, pkgName + ".processed.json");
-		file.getParentFile().mkdirs();
-		LOGGER.info("Writing to {}", file.getAbsolutePath());
-
-		try (FileWriter writer = new FileWriter(file)) {
-			GSON.toJson(comps, writer);
-		} catch (IOException e) {
-			LOGGER.error("Writing failed", e);
+		val pkg = exportAndProduceProcessed(config.ExportPackage) ?: return
+		val file = File("processed.json")
+		LOGGER.info("Writing to " + file.absolutePath)
+		FileWriter(file).use { GSON.toJson(provider.compactFilePath(pkg.name), it) }
+		LOGGER.info("All done in %,.1f sec. In the Python script, replace the line with data_dir with this line below:\n\ndata_dir = r\"%s\"".format((System.currentTimeMillis() - start) / 1000.0f, File("").absolutePath))
+	} catch (e: Exception) {
+		when (e) {
+			is MainException -> LOGGER.info(e.message)
+			is JsonSyntaxException -> LOGGER.error("Please check your config.json for syntax errors.\n{}", e.cause?.message)
+			else -> LOGGER.error("An unexpected error has occurred, please check your config.json or report to the author", e)
 		}
-
-		return pkg;
-	}
-
-	private static void addToArray(JsonArray array, Lazy<? extends UTexture> index) {
-		if (index != null) {
-			exportTexture(index);
-			array.add(pkgIndexToDirPath(index));
-		} else {
-			array.add((JsonElement) null);
-		}
-	}
-
-	private static void exportTexture(Lazy<? extends UTexture> index) {
-		try {
-			UTexture2D texture = index.getValue() instanceof UTexture2D ? (UTexture2D) index.getValue() : null;
-			if (texture == null) {
-				return;
-			}
-			FTexturePlatformData platformData = texture.getFirstTexture();
-			char[] fourCC = config.bExportToDDSWhenPossible ? TexturesKt.getDdsFourCC(platformData) : null;
-			File output = new File(getExportDir(texture), texture.getName() + (fourCC != null ? ".dds" : ".png"));
-
-			if (output.exists()) {
-				LOGGER.debug("Texture already exists, skipping: {}", output.getAbsolutePath());
-			} else {
-				LOGGER.info("Saving texture to {}", output.getAbsolutePath());
-
-				if (fourCC != null) {
-					FilesKt.writeBytes(output, TexturesKt.toDdsArray(texture, platformData, platformData.getFirstLoadedMip()));
-				} else {
-					ImageIO.write(TexturesKt.toBufferedImage(texture, platformData, platformData.getFirstLoadedMip()), "png", output);
-				}
-			}
-		} catch (Exception e) {
-			LOGGER.warn("Failed to save texture", e);
-		}
-	}
-
-	public static File getExportDir(UObject exportObj) {
-		String pkgPath = provider.compactFilePath(exportObj.getOwner().getName());
-		pkgPath = StringsKt.substringBeforeLast(pkgPath, '.', pkgPath);
-
-		if (pkgPath.startsWith("/")) {
-			pkgPath = pkgPath.substring(1);
-		}
-
-		File outputDir = new File(pkgPath).getParentFile();
-		String pkgName = StringsKt.substringAfterLast(pkgPath, '/', pkgPath);
-
-		if (!exportObj.getName().equals(pkgName)) {
-			outputDir = new File(outputDir, pkgName);
-		}
-
-		outputDir.mkdirs();
-		return outputDir;
-	}
-
-	public static String pkgIndexToDirPath(Lazy<? extends UObject> index) {
-		if (index == null) return null;
-
-		UObject object;
-		try {
-			object = index.getValue();
-		} catch (Exception e) {
-			LOGGER.warn("Failed to load object", e);
-			return null;
-		}
-		String pkgPath = provider.compactFilePath(object.getOwner().getName());
-		pkgPath = StringsKt.substringBeforeLast(pkgPath, '.', pkgPath);
-		String objectName = object.getName();
-		return StringsKt.substringAfterLast(pkgPath, '/', pkgPath).equals(objectName) ? pkgPath : pkgPath + '/' + objectName;
-	}
-
-	private static JsonArray vector(FVector vector) {
-		if (vector == null) return null;
-		JsonArray array = new JsonArray(3);
-		array.add(vector.getX());
-		array.add(vector.getY());
-		array.add(vector.getZ());
-		return array;
-	}
-
-	private static JsonArray rotator(FRotator rotator) {
-		if (rotator == null) return null;
-		JsonArray array = new JsonArray(3);
-		array.add(rotator.getPitch());
-		array.add(rotator.getYaw());
-		array.add(rotator.getRoll());
-		return array;
-	}
-
-	private static JsonArray quat(FQuat quat) {
-		if (quat == null) return null;
-		JsonArray array = new JsonArray(4);
-		array.add(quat.getX());
-		array.add(quat.getY());
-		array.add(quat.getZ());
-		array.add(quat.getW());
-		return array;
-	}
-
-	private static class Mat {
-		public Lazy<? extends UMaterialInterface> name;
-		public Map<String, Lazy<UTexture>> textureMap = new HashMap<>();
-
-		public Mat(Lazy<? extends UMaterialInterface> name) {
-			this.name = name;
-		}
-
-		public void populateTextures() {
-			populateTextures(name);
-		}
-
-		public void populateTextures(Lazy<? extends UMaterialInterface> pkgIndex) {
-			if (pkgIndex == null) return;
-
-			UObject object = pkgIndex.getValue();
-			if (!(object instanceof UMaterialInstance)) return;
-			UMaterialInstance material = (UMaterialInstance) object;
-
-			List<FTextureParameterValue> textureParameterValues = material.TextureParameterValues;
-
-			if (textureParameterValues != null) {
-				for (FTextureParameterValue textureParameterValue : textureParameterValues) {
-					FName name = textureParameterValue.ParameterInfo.Name;
-
-					if (name != null) {
-						Lazy<UTexture> parameterValue = textureParameterValue.ParameterValue;
-
-						if (parameterValue != null && !textureMap.containsKey(name.getText())) {
-							textureMap.put(name.getText(), parameterValue);
-						}
-					}
-				}
-			}
-
-			if (material.Parent != null) {
-				populateTextures(material.Parent);
-			}
-		}
-
-		public void addToObj(JsonObject obj) {
-			if (name == null) {
-				obj.add(Integer.toHexString(hashCode()), null);
-				return;
-			}
-
-			Lazy[][] textures = { // d n s e a
-				{
-					textureMap.getOrDefault("Trunk_BaseColor", textureMap.getOrDefault("Diffuse", textureMap.get("DiffuseTexture"))),
-					textureMap.getOrDefault("Trunk_Normal", textureMap.get("Normals")),
-					textureMap.getOrDefault("Trunk_Specular", textureMap.get("SpecularMasks")),
-					textureMap.get("EmissiveTexture"),
-					textureMap.get("MaskTexture")
-				},
-				{
-					textureMap.get("Diffuse_Texture_3"),
-					textureMap.get("Normals_Texture_3"),
-					textureMap.get("SpecularMasks_3"),
-					textureMap.get("EmissiveTexture_3"),
-					textureMap.get("MaskTexture_3")
-				},
-				{
-					textureMap.get("Diffuse_Texture_4"),
-					textureMap.get("Normals_Texture_4"),
-					textureMap.get("SpecularMasks_4"),
-					textureMap.get("EmissiveTexture_4"),
-					textureMap.get("MaskTexture_4")
-				},
-				{
-					textureMap.get("Diffuse_Texture_2"),
-					textureMap.get("Normals_Texture_2"),
-					textureMap.get("SpecularMasks_2"),
-					textureMap.get("EmissiveTexture_2"),
-					textureMap.get("MaskTexture_2")
-				}
-			};
-
-			JsonArray array = new JsonArray(textures.length);
-
-			for (Lazy[] texture : textures) {
-				boolean empty = true;
-
-				for (Lazy<UTexture> index : texture) {
-					empty &= index == null;
-
-					if (index != null) {
-						exportTexture(index);
-					}
-				}
-
-				JsonArray subArray = new JsonArray(texture.length);
-
-				if (!empty) {
-					for (Lazy<UTexture> index : texture) {
-						subArray.add(pkgIndexToDirPath(index));
-					}
-				}
-
-				array.add(subArray);
-			}
-
-			obj.add(pkgIndexToDirPath(name), array);
-		}
-	}
-
-	public static class Config {
-		public String PaksDirectory = "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks";
-		public Ue4Version UEVersion = Ue4Version.GAME_UE4_LATEST;
-		public List<MyFileProvider.EncryptionKey> EncryptionKeys = Collections.emptyList();
-		public boolean bDumpAssets = false;
-		public int ObjectCacheSize = 100;
-		public boolean bReadMaterials = true;
-		public boolean bExportToDDSWhenPossible = true;
-		public boolean bExportBuildingFoundations = true;
-		public String ExportPackage;
-	}
-
-	private static class MainException extends Exception {
-		public MainException(String message) {
-			super(message);
-		}
+		exitProcess(1)
 	}
 }
+
+fun getNewestUsmap(directoryFilePath: String): File? {
+	val directory = File(directoryFilePath)
+	val files = directory.listFiles()
+	var lastModifiedTime = Long.MIN_VALUE
+	var chosenFile: File? = null
+	files?.forEach {
+		if (it.isFile && it.name.endsWith(".usmap") && it.lastModified() > lastModifiedTime) {
+			chosenFile = it
+			lastModifiedTime = it.lastModified()
+		}
+	}
+	return chosenFile
+}
+
+private fun exportAndProduceProcessed(path: String): Package? {
+	val world = provider.loadObject(path)
+	if (world == null) {
+		LOGGER.warn("Not found: $path")
+		return null
+	}
+	if (world !is UWorld) {
+		LOGGER.warn(world.getFullName() + " is not a World, won't try to export")
+		return null
+	}
+	val persistentLevel = world.persistentLevel!!.value
+	val comps = JsonArray()
+	for (actorLazy in persistentLevel.actors) {
+		val actor = actorLazy?.value ?: continue
+		if (actor.exportType == "LODActor") continue
+		val staticMeshComponent = actor.getOrNull<Lazy<UObject>>("StaticMeshComponent")?.value ?: continue // /Script/Engine.StaticMeshActor:StaticMeshComponent or /Script/FortniteGame.BuildingSMActor:StaticMeshComponent
+
+		// identifiers
+		val comp = JsonArray()
+		comps.add(comp)
+		val guid = actor.getOrNull<FGuid>("MyGuid") // /Script/FortniteGame.BuildingActor:MyGuid
+		comp.add(guid?.toString()?.lowercase() ?: UUID.randomUUID().toString().replace("-", ""))
+		comp.add(actor.name)
+
+		// region mesh
+		var staticMeshLazy = staticMeshComponent.getOrNull<Lazy<UStaticMesh>>("StaticMesh") // /Script/Engine.StaticMeshComponent:StaticMesh
+		if (staticMeshLazy == null) { // read the actor class to find the mesh
+			val actorBlueprint = actor.clazz
+			if (actorBlueprint is UBlueprintGeneratedClass) {
+				staticMeshLazy = actorBlueprint.owner!!.exports.firstNotNullOfOrNull { it.getOrNull<Lazy<UStaticMesh>>("StaticMesh") }
+			}
+		}
+		// endregion
+
+		val matsObj = JsonObject()
+		val textureDataArr = JsonArray()
+		val materials = mutableListOf<Mat>()
+		val staticMesh = staticMeshLazy?.value
+		if (staticMesh != null) {
+			staticMesh.convertMesh().export(exportMaterials = false)!!.writeToDir(staticMesh.getExportDir())
+			if (config.bReadMaterials) {
+				staticMesh.StaticMaterials?.mapTo(materials) { Mat(it.materialInterface) }
+			}
+		}
+		if (config.bReadMaterials /*&& actor is BuildingSMActor*/) {
+			var baseMaterial = actor.getOrNull<Lazy<UMaterialInterface>>("BaseMaterial") // /Script/FortniteGame.BuildingSMActor:BaseMaterial
+			val overrideMaterials = staticMeshComponent.getProp<List<Lazy<UMaterialInterface>>>("OverrideMaterials", TypeToken.getParameterized(List::class.java, UMaterialInterface::class.java).type) // /Script/Engine.MeshComponent:OverrideMaterials
+			for (textureDataLazy in actor.getProps<Lazy<BuildingTextureData>>("TextureData")) { // /Script/FortniteGame.BuildingSMActor:TextureData
+				val textureData = textureDataLazy?.value
+				if (textureData == null) {
+					textureDataArr.add(JsonNull.INSTANCE)
+					continue
+				}
+				textureDataArr.add(JsonArray().apply {
+					add(textureDataLazy.toDirPath())
+					add(JsonArray().apply {
+						addLazy(textureData.Diffuse)
+						addLazy(textureData.Normal)
+						addLazy(textureData.Specular)
+					})
+				})
+				textureData.OverrideMaterial?.let { baseMaterial = it }
+			}
+			materials.forEachIndexed { i, mat ->
+				if (baseMaterial != null) {
+					mat.material = overrideMaterials?.getOrNull(i) ?: baseMaterial
+				}
+				mat.populateTextures()
+				mat.addToObj(matsObj)
+			}
+		}
+
+		// region additional worlds
+		val children = JsonArray()
+		val additionalWorlds = actor.getProp<List<FSoftObjectPath>>("AdditionalWorlds", TypeToken.getParameterized(List::class.java, FSoftObjectPath::class.java).type) // /Script/FortniteGame.BuildingFoundation:AdditionalWorlds
+		if (config.bExportBuildingFoundations && additionalWorlds != null) {
+			for (additionalWorld in additionalWorlds) {
+				val worldPackage = exportAndProduceProcessed(additionalWorld.assetPathName.text)
+				children.add(worldPackage?.let { provider.compactFilePath(it.name) })
+			}
+		}
+		// endregion
+
+		comp.add(staticMeshLazy.toDirPath())
+		comp.add(matsObj)
+		comp.add(textureDataArr)
+		comp.add(staticMeshComponent.getOrNull<FVector>("RelativeLocation").array()) // /Script/Engine.SceneComponent:RelativeLocation
+		comp.add(staticMeshComponent.getOrNull<FRotator>("RelativeRotation").array()) // /Script/Engine.SceneComponent:RelativeRotation
+		comp.add(staticMeshComponent.getOrNull<FVector>("RelativeScale3D").array()) // /Script/Engine.SceneComponent:RelativeScale3D
+		comp.add(children)
+	}
+	/*if (config.bExportBuildingFoundations) {
+		for (streamingLevelLazy in world.streamingLevels) {
+			val streamingLevel = streamingLevelLazy?.value ?: continue
+			val children = JsonArray()
+			val worldPackage = exportAndProduceProcessed(streamingLevel.get<FSoftObjectPath>("WorldAsset").assetPathName.text)
+			children.add(if (worldPackage != null) provider.compactFilePath(worldPackage.name) else null)
+			val transform = streamingLevel.get<FTransform>("LevelTransform")
+			val comp = JsonArray()
+			comp.add(JsonNull.INSTANCE) // GUID
+			comp.add(streamingLevel.name)
+			comp.add(JsonNull.INSTANCE) // mesh path
+			comp.add(JsonNull.INSTANCE) // materials
+			comp.add(JsonNull.INSTANCE) // texture data
+			comp.add(transform.translation.array()) // location
+			comp.add(transform.rotation.array()) // rotation
+			comp.add(transform.scale3D.array()) // scale
+			comp.add(children)
+			comps.add(comp)
+		}
+	}*/
+	val pkg = world.owner!!
+	val pkgName = provider.compactFilePath(pkg.name)
+	val file = File(MyFileProvider.JSONS_FOLDER, "$pkgName.processed.json")
+	file.parentFile.mkdirs()
+	LOGGER.info("Writing to {}", file.absolutePath)
+	try {
+		FileWriter(file).use { writer -> GSON.toJson(comps, writer) }
+	} catch (e: IOException) {
+		LOGGER.error("Writing failed", e)
+	}
+	return pkg
+}
+
+private fun JsonArray.addLazy(lazy: Lazy<UTexture>?) {
+	if (lazy != null) {
+		exportTexture(lazy)
+		add(lazy.toDirPath())
+	} else {
+		add(JsonNull.INSTANCE)
+	}
+}
+
+private fun exportTexture(lazy: Lazy<UTexture>) {
+	try {
+		val texture = lazy.value as? UTexture2D ?: return
+		val platformData = texture.getFirstTexture()
+		val fourCC = if (config.bExportToDDSWhenPossible) platformData.getDdsFourCC() else null
+		val output = File(texture.getExportDir(), texture.name + if (fourCC != null) ".dds" else ".png")
+		if (output.exists()) {
+			LOGGER.debug("Texture already exists, skipping: {}", output.absolutePath)
+		} else {
+			LOGGER.info("Saving texture to {}", output.absolutePath)
+			if (fourCC != null) {
+				output.writeBytes(texture.toDdsArray(platformData, platformData.getFirstLoadedMip()))
+			} else {
+				ImageIO.write(texture.toBufferedImage(platformData, platformData.getFirstLoadedMip()), "png", output)
+			}
+		}
+	} catch (e: Exception) {
+		LOGGER.warn("Failed to save texture", e)
+	}
+}
+
+fun UObject.getExportDir(): File {
+	var pkgPath = provider.compactFilePath(owner!!.name)
+	pkgPath = pkgPath.substringBeforeLast('.', pkgPath)
+	if (pkgPath.startsWith("/")) {
+		pkgPath = pkgPath.substring(1)
+	}
+	var outputDir = File(pkgPath).parentFile
+	val pkgName = pkgPath.substringAfterLast('/', pkgPath)
+	if (name != pkgName) {
+		outputDir = File(outputDir, pkgName)
+	}
+	outputDir.mkdirs()
+	return outputDir
+}
+
+fun Lazy<UObject>?.toDirPath(): String? {
+	if (this == null) return null
+	val obj = try {
+		value
+	} catch (e: Exception) {
+		LOGGER.warn("Failed to load object", e)
+		return null
+	}
+	var pkgPath = provider.compactFilePath(obj.owner!!.name)
+	pkgPath = pkgPath.substringBeforeLast('.', pkgPath)
+	val objectName = obj.name
+	return if (pkgPath.substringAfterLast('/', pkgPath) == objectName) pkgPath else "$pkgPath/$objectName"
+}
+
+private fun FVector?.array() = this?.run { JsonArray(3).apply { add(x); add(y); add(z) } }
+private fun FRotator?.array() = this?.run { JsonArray(3).apply { add(pitch); add(yaw); add(roll) } }
+private fun FQuat?.array() = this?.run { JsonArray(4).apply { add(x); add(y); add(z); add(w) } }
+
+private class Mat(var material: Lazy<UMaterialInterface>?) {
+	var textureMap = hashMapOf<String, Lazy<UTexture>>()
+
+	@JvmOverloads
+	fun populateTextures(lazy: Lazy<UMaterialInterface>? = material) {
+		if (lazy == null) return
+		val material = lazy.value as? UMaterialInstance ?: return
+		material.TextureParameterValues?.forEach {
+			val name = it.ParameterInfo.Name ?: FName.NAME_None
+			if (name.text !in textureMap) {
+				textureMap[name.text] = it.ParameterValue
+			}
+		}
+		material.Parent?.let(::populateTextures)
+	}
+
+	fun addToObj(obj: JsonObject) {
+		if (material == null) {
+			obj.add(Integer.toHexString(hashCode()), null)
+			return
+		}
+		val textures = arrayOf(
+			arrayOf(
+				textureMap["Trunk_BaseColor"] ?: textureMap["Diffuse"] ?: textureMap["DiffuseTexture"],
+				textureMap["Trunk_Normal"] ?: textureMap["Normals"],
+				textureMap["Trunk_Specular"] ?: textureMap["SpecularMasks"],
+				textureMap["EmissiveTexture"],
+				textureMap["MaskTexture"]
+			), arrayOf(
+				textureMap["Diffuse_Texture_3"],
+				textureMap["Normals_Texture_3"],
+				textureMap["SpecularMasks_3"],
+				textureMap["EmissiveTexture_3"],
+				textureMap["MaskTexture_3"]
+			), arrayOf(
+				textureMap["Diffuse_Texture_4"],
+				textureMap["Normals_Texture_4"],
+				textureMap["SpecularMasks_4"],
+				textureMap["EmissiveTexture_4"],
+				textureMap["MaskTexture_4"]
+			), arrayOf(
+				textureMap["Diffuse_Texture_2"],
+				textureMap["Normals_Texture_2"],
+				textureMap["SpecularMasks_2"],
+				textureMap["EmissiveTexture_2"],
+				textureMap["MaskTexture_2"]
+			)
+		)
+		val array = JsonArray(textures.size)
+		for (texture in textures) {
+			var exported = 0
+			for (lazy in texture) {
+				if (lazy != null) {
+					exportTexture(lazy)
+					++exported
+				}
+			}
+			val subArray = JsonArray(texture.size)
+			if (exported > 0) {
+				for (lazy in texture) {
+					subArray.add(lazy.toDirPath())
+				}
+			}
+			array.add(subArray)
+		}
+		obj.add(material.toDirPath(), array)
+	}
+}
+
+private class MainException(message: String?) : Exception(message)
